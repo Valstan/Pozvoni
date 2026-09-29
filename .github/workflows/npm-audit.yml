@@ -1,0 +1,45 @@
+# Scheduled npm audit (brain 2026-09-14 class #312 / idea pool #312).
+# Не required check: падает только при high/critical, не ломает мёрж.
+# Расписание: пн/чт 06:15 UTC (не на ровный час — очередь GitHub).
+# Дополнительно: при изменении package-lock.json и по кнопке.
+
+name: npm audit
+
+on:
+  schedule:
+    - cron: "15 6 * * 1,4"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: npm-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      - name: Аудит зависимостей (high/critical, без dev)
+        run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true
