@@ -18,6 +18,7 @@ const scriptSrc = dev
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  poweredByHeader: false,
 
   // Прод-бокс маленький: собрать на нём Next-приложение не выйдет — процесс ловит OOM,
   // а swap на контейнерном VPS не включается (G20). Поэтому сборка идёт в CI, а на
@@ -98,6 +99,9 @@ const nextConfig = {
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
+          // HSTS: год, без includeSubDomains (домены соседей на зоне вмалмыже.рф
+          // не под нашим контролем; brain 2026-09-14 class #310).
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
         ],
       },
       {
