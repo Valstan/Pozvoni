@@ -39,7 +39,7 @@ payload — сессия 2026-09-19».
 фактическим втрое — цифра приведена к замеру 2026-09-20. См. §«Релизный пакет ел сам себя
 — сессия 2026-09-20».
 **Updated:** 2026-09-29
-**Branch:** main после merge PR #11–#94
+**Branch:** main после merge PR #11–#96
 **Прод:** выкачен с `main` 2026-09-19 (прогон `deploy` 35396966367, success, `0fe97e8` —
 payload 3.90.1; релиз `20260918-213026-0fe97e8`). **На 2026-09-20 прод отстаёт от `main` на два коммита —
 b8eee5b (handoff) и db90cc6 (сборка и документация). Рантайм-кода среди них нет, выкатка
@@ -77,29 +77,24 @@ success, `29f371f` — кука `__Host-`; релиз `20260911-183017-29f371f`)
 до этого выход гасил только сайт. Тогда же заведена **read-only проба прода** (PR #68):
 дрейф схемы против G231 и живой выход, раз в сутки и по кнопке.
 
-## Переименование репозитория в Pozvoni — сессия 2026-09-29
+## Переименование репозитория в Pozvoni — сессия 2026-09-29 (ЗАВЕРШЕНО)
 
 Решение владельца: основная тема — «ПОЗВОНИ» (`позвони.вмалмыже.рф`), такси — часть
-портала со своим доменом-адресом (`такси.вмалмыже.рф`). Репозиторий переименовывается
+портала со своим доменом-адресом (`такси.вмалмыже.рф`). Репозиторий переименован
 `Valstan/TaksiMalmyzh` → **`Valstan/Pozvoni`** (GitHub кириллицу в имени не принимает).
 
-Порядок (важен): **сначала** владелец переименовывает в Settings на GitHub (старый адрес
-продолжает работать редиректом), **потом** мержится этот PR (в нём уже новый clone-URL),
-**потом** `git remote set-url origin https://github.com/Valstan/Pozvoni.git` в рабочих
-копиях. Такси-домен не трогаем — меняется только имя репозитория.
+**Выполнено 2026-09-29:**
+1. Владелец переименовал репозиторий в Settings на GitHub.
+2. PR #96 смержен squash (`d497ee1`), CI зелёный (`build` + `gitleaks`).
+3. `origin` переключён на `https://github.com/Valstan/Pozvoni.git`, `main` подтянут.
+4. Вложенный worktree `gallant-darwin-5f35b6` (пустая агентская сессия от 19.09) удалён.
 
-В этом PR — живая идентичность: заголовки `AGENTS.md`/`README.md`/`PROJECT_STATE.md`/
-handoff, `package.json` + `package-lock.json` (`pozvoni`), описание пакета, `DEPLOY.md`
-(clone-URL и `/tmp/pozvoni-bootstrap`), `Description` в `deploy/taksi.service.example`
-(имя файла и имя службы на боксе не менялись), User-Agent скриптов карт/адресов,
-`.gitleaks.toml` (title и `pozvoni-apikey-uuid`), тексты `.claude/` и `mailbox/README.md`,
-плюс письмо brain с просьбой переименовать его сторону.
+**Ожидает brain:** переименование `mailboxes/TaksiMalmyzh` → `mailboxes/Pozvoni` и
+`projects/TaksiMalmyzh.md` → `projects/Pozvoni.md` на его стороне. После ответа —
+второй PR с обновлением ссылок в `AGENTS.md`/`start.md`/`mailbox/README.md`/`PROJECT_STATE.md`.
 
-Не тронуто намеренно: история `mailbox/to-brain/` (старые `from: TaksiMalmyzh` — факт),
-пути brain-стороны в `AGENTS.md`/`start.md`/`mailbox/README.md`/`PROJECT_STATE.md`
-(`mailboxes/TaksiMalmyzh/`, `projects/TaksiMalmyzh.md`) — их правит сам brain после
-письма, вторым PR обновим ссылки; имя файла `taksi.service.example` и имя службы;
-локальный каталог рабочей копии. Рантайм-кода в PR нет — выкатка не нужна.
+**Локальный каталог** `D:\valstan\REPO\TaksiMalmyzh` переименовать в `Pozvoni` после
+закрытия сессии (git не зависит от пути каталога).
 
 ## Релизный пакет ел сам себя — сессия 2026-09-20
 
