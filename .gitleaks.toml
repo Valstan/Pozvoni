@@ -3,7 +3,7 @@
 # класс утечки — ключ карт-провайдера (Яндекс.Карты / 2ГИС) в форме apikey=<uuid>,
 # а дефолтные правила ловят его ненадёжно (entropy hex-UUID гуляет около порога 3.5).
 
-title = "TaksiMalmyzh — кастомные правила поверх дефолтных"
+title = "Pozvoni — кастомные правила поверх дефолтных"
 
 [extend]
 # Расширяем дефолтный конфиг, вшитый в бинарь gitleaks
@@ -11,7 +11,7 @@ title = "TaksiMalmyzh — кастомные правила поверх деф�
 useDefault = true
 
 [[rules]]
-id = "taksi-apikey-uuid"
+id = "pozvoni-apikey-uuid"
 description = "apikey=<uuid> — ключ карт-провайдера в форме UUID"
 # Go-regexp (без lookahead). secretGroup = 1 — сам UUID.
 regex = '''(?i)\bapi[_-]?key\s*[=:]\s*["']?([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})["']?'''

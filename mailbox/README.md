@@ -1,4 +1,4 @@
-# mailbox — исходящие письма Такси → brain
+# mailbox — исходящие письма ПОЗВОНИ → brain
 
 Кладём сюда `to-brain/YYYY-MM-DD-slug.md` с frontmatter: `from`, `to`, `date`, `kind`
 (`note` | `feedback` | `request` | `proposal`), при необходимости `compliance`,

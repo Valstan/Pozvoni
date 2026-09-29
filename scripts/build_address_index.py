@@ -53,7 +53,7 @@ def fetch(attempts: int = 4) -> dict:
             req = urllib.request.Request(
                 OVERPASS,
                 data=QUERY.encode("utf-8"),
-                headers={"User-Agent": "TaksiMalmyzh-address-build/1.0"},
+                headers={"User-Agent": "Pozvoni-address-build/1.0"},
             )
             with urllib.request.urlopen(req, timeout=300) as r:
                 return json.loads(r.read())

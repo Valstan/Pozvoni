@@ -11,7 +11,7 @@ cd "$(dirname "$0")/../.." || exit 0
 
 HANDOFF="docs/SESSION_HANDOFF.md"
 
-echo "=== TaksiMalmyzh · SessionStart · $(date +%F) ==="
+echo "=== Pozvoni · SessionStart · $(date +%F) ==="
 git status -sb 2>/dev/null | head -5
 git log --oneline -3 2>/dev/null
 

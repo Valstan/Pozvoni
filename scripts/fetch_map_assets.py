@@ -34,7 +34,7 @@ from pathlib import Path
 ASSETS = "https://protomaps.github.io/basemaps-assets"
 FONTSTACKS = ["Noto Sans Regular", "Noto Sans Medium", "Noto Sans Italic"]
 SPRITE_FLAVOR = "light"
-UA = {"User-Agent": "TaksiMalmyzh-map-build/1.0"}
+UA = {"User-Agent": "Pozvoni-map-build/1.0"}
 
 # Диапазоны, нужные всегда: базовая латиница с пунктуацией — в неё попадают
 # цифры домов и служебные символы, даже если в подписях один кириллический текст.
