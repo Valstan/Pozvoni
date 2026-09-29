@@ -109,8 +109,8 @@ npm run package    # release/ — рантайм + .next/static + public + data
 деплой-ключ, ставит systemd-юнит и секцию nginx:
 
 ```bash
-git clone --depth 1 https://github.com/Valstan/TaksiMalmyzh.git /tmp/taksi-bootstrap
-sudo bash /tmp/taksi-bootstrap/deploy/bootstrap-box.sh \
+git clone --depth 1 https://github.com/Valstan/Pozvoni.git /tmp/pozvoni-bootstrap
+sudo bash /tmp/pozvoni-bootstrap/deploy/bootstrap-box.sh \
      --user <пользователь> --dir <каталог> --port <порт> \
      --service <имя службы> --domain "<домен> [<домен> ...]" --key "<публичный ключ>" \
      [--closed <файл паролей basic-auth>]

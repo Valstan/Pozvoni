@@ -1,8 +1,8 @@
 ---
-description: Закрыть сессию «Такси» — сохранить состояние в SESSION_HANDOFF и запушить всё через PR-flow
+description: Закрыть сессию «ПОЗВОНИ» — сохранить состояние в SESSION_HANDOFF и запушить всё через PR-flow
 ---
 
-# /close_session — финализация сессии «Такси» (TaksiMalmyzh)
+# /close_session — финализация сессии «ПОЗВОНИ» (Pozvoni)
 
 Цель: оставить pointer «куда шли» в `docs/SESSION_HANDOFF.md` и убедиться, что **всё на `origin`**, brain не тронут.
 

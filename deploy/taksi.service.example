@@ -4,7 +4,7 @@
 # они в карточке проекта на стороне brain.
 
 [Unit]
-Description=TaksiMalmyzh (Next.js standalone)
+Description=Pozvoni (Next.js standalone)
 After=network-online.target
 Wants=network-online.target
 

@@ -41,7 +41,7 @@ await cp("public", path.join(OUT, "public"), { recursive: true });
 await writeFile(
   path.join(OUT, "README.txt"),
   [
-    "Релизный пакет TaksiMalmyzh.",
+    "Релизный пакет Pozvoni.",
     "",
     "Запуск:  node server.js",
     "Переменные: PORT, HOSTNAME (см. docs/DEPLOY.md в репозитории).",
