@@ -19,9 +19,9 @@ export async function generateMetadata(): Promise<Metadata> {
     // ставится только для заведённого домена — ссылка на несуществующий хост
     // хуже, чем её отсутствие.
     alternates: site.live ? { canonical: `https://${site.host}/` } : undefined,
-    // Стенд этапа A закрыт снаружи, но запрет индексации ставим сразу: включать его
-    // потом — значит однажды забыть (docs/GO_LIVE_CHECKLIST.md, этап A).
-    robots: { index: false, follow: false },
+    // Глобальный noindex убран 2026-09-29: сайт работает открыто, главная и справочник
+    // должны быть в индексе. Страницы с личными данными (/zapis, /poezdki, /kabinet,
+    // /t/*, /admin, /api/*) имеют свой локальный robots: { index: false, follow: false }.
   };
 }
 
