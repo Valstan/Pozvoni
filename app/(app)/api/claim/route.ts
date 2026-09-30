@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClaim, marketReady } from "@/lib/market";
+import { limited } from "@/lib/rate-limit";
 
 // «Это мой бизнес»: заявка от вошедшего посетителя на опубликованную запись.
 // Подтверждает персонал звонком (см. lib/market-ddl.ts). Тело: { entryId }.
@@ -19,6 +20,14 @@ export async function POST(request: Request) {
   const payload = await getPayload({ config });
   const { user } = await payload.auth({ headers: request.headers });
   if (!user) return bad("Нужно войти.", 401);
+
+  // Потолок: заявка подаётся сессией без роли, а сессия бесплатна и заводится автоматически.
+  // Без него один человек оставлял заявку на каждую опубликованную карточку без владельца,
+  // а персонал потом обязан по каждой позвонить. Ключ — человек, а не ресурс: заявок на
+  // разные карточки может быть несколько, и это законно.
+  if (limited(`claim:${Number(user.id)}`, 10)) {
+    return bad("Слишком много заявок подряд — попробуйте позже.", 429);
+  }
 
   const found = await payload.find({ collection: "entries", where: { id: { equals: entryId } }, limit: 1, depth: 0, overrideAccess: false });
   const entry = found.docs[0];

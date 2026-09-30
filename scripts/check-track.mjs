@@ -339,6 +339,52 @@ try {
       eq(await market.pruneRequests(pool), 1, "вызов старше 30 суток удалён");
       eq(await market.marketReady(pool), true, "схема market на месте");
 
+      // --- approveClaim: порядок операций и защита чужого владельца
+      //
+      // Проверяется ровно то, о чём спор: раньше заявка помечалась подтверждённой ПЕРВОЙ,
+      // а владелец записывался вторым, и падение записи теряло заявку навсегда. Здесь
+      // порядок виден прямо: `payload.update` обязан произойти ДО `status = 1`, иначе
+      // утверждение «запись идёт до пометки» было бы написано, а не сделано.
+      const order = [];
+      const fakePayload = (ownerPresent) => ({
+        find: async () => ({ docs: [{ id: 1, owner: ownerPresent }] }),
+        update: async () => { order.push("owner"); },
+      });
+      const claimIdOf = async (entry, user) =>
+        (await pool.query(`SELECT id FROM market.claim WHERE entry_id = $1 AND user_id = $2`, [entry, user]))
+          .rows[0]?.id;
+      {
+        eq(await market.createClaim(1, 9), "created", "заявка второго посетителя создана");
+        // id заявки — ИЗ БАЗЫ, а не по счёту: `GENERATED ALWAYS AS IDENTITY` продолжается
+        // через всю проверку, и выдуманный номер проверял бы несуществующую строку.
+        const c9 = await claimIdOf(1, 9);
+        eq(typeof c9, "number", "id заявки прочитан");
+
+        // Сначала роняем ЗАПИСЬ владельца: заявка обязана остаться ждать, а не
+        // подтвердиться вхолостую.
+        const failing = {
+          find: async () => ({ docs: [{ id: 1, owner: null }] }),
+          update: async () => { throw new Error("падение записи"); },
+        };
+        let threw = false;
+        try { await market.approveClaim(failing, c9); } catch { threw = true; }
+        eq(threw, true, "падение записи владельца не глотается");
+        eq((await market.myClaims(9)).get(1), 0, "заявка осталась в очереди — её можно подтвердить повторно");
+
+        order.length = 0;
+        eq(await market.approveClaim(fakePayload(null), c9), "ok", "подтверждение прошло");
+        eq(order.length, 1, "владелец записан");
+        eq((await market.myClaims(9)).get(1), 1, "заявка подтверждена");
+
+        // Карточка уже занята: подтверждение обязано отказать и НЕ трогать заявку.
+        await market.createClaim(2, 11);
+        const c11 = await claimIdOf(2, 11);
+        order.length = 0;
+        eq(await market.approveClaim(fakePayload(7), c11), "taken", "у карточки уже есть владелец — отказ");
+        eq(order.length, 0, "чужой владелец не перетирается");
+        eq(await market.approveClaim(fakePayload(null), 999_999), "no_claim", "несуществующей заявки нет");
+      }
+
       // --- спринт 9: звёзды — один голос на устройство в день, формула владельца
       const { RATINGS_DDL_UP } = await import("../lib/market-ddl.ts");
       await pool.query(RATINGS_DDL_UP);

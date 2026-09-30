@@ -111,17 +111,42 @@ export async function pendingClaims(payload: Payload): Promise<Claim[]> {
   }));
 }
 
-/** Персонал подтвердил звонком: владелец записывается в карточку, остальные заявки на неё гаснут. */
-export async function approveClaim(payload: Payload, claimId: number): Promise<boolean> {
+/**
+ * Персонал подтвердил звонком: владелец записывается в карточку, остальные заявки на неё гаснут.
+ *
+ * ⚠️ Порядок операций здесь и порядок в `lib/entry-edits.ts` — противоположны не случайно.
+ * Раньше заявка помечалась подтверждённой ПЕРВОЙ, а владелец записывался вторым; при падении
+ * `payload.update` посетитель видел «ваша карточка», владельца у карточки не было, и заявка
+ * навсегда выпадала из очереди (`pendingClaims` берёт `status = 0`, ретеншн сносит по сроку).
+ * Ровно тот вывод, который сам проект записал для очереди правок: «запись идёт ДО пометки».
+ *
+ * ⚠️ Второе: подтверждение не должно перетирать чужого владельца. Гейт «у карточки ещё нет
+ * владельца» стоит в точке ПОДАЧИ заявки (`app/(app)/api/claim/route.ts`), а не в точке
+ * решения; владельца могли поставить руками в админке или перенести при привязке ЕСА. Теперь
+ * сверка есть и здесь, а конфликт решается отказом, а не тихим переносом кабинета и
+ * работников от прежнего владельца к новому.
+ */
+export async function approveClaim(payload: Payload, claimId: number): Promise<"ok" | "no_claim" | "taken"> {
   const pool = trackPool();
-  const { rows } = await pool.query<{ entry_id: number; user_id: number }>(
-    `UPDATE market.claim SET status = 1 WHERE id = $1 AND status = 0 RETURNING entry_id, user_id`, [claimId],
+  // Кто и на что претендует — читаем, не меняя статус.
+  const { rows: [claim] } = await pool.query<{ entry_id: number; user_id: number }>(
+    `SELECT entry_id, user_id FROM market.claim WHERE id = $1 AND status = 0`, [claimId],
   );
-  const c = rows[0];
-  if (!c) return false;
-  await payload.update({ collection: "entries", id: c.entry_id, data: { owner: c.user_id }, overrideAccess: true });
-  await pool.query(`UPDATE market.claim SET status = 2 WHERE entry_id = $1 AND status = 0`, [c.entry_id]);
-  return true;
+  if (!claim) return "no_claim";
+
+  const current = await payload.find({
+    collection: "entries", where: { id: { equals: claim.entry_id } }, limit: 1, depth: 0, overrideAccess: true,
+  });
+  if (current.docs[0]?.owner) return "taken";
+
+  // Запись идёт первой: если она падает, заявка остаётся в очереди и её можно подтвердить
+  // повторно. Обратный порядок терял заявку навсегда.
+  await payload.update({
+    collection: "entries", id: claim.entry_id, data: { owner: claim.user_id }, overrideAccess: true,
+  });
+  await pool.query(`UPDATE market.claim SET status = 1 WHERE id = $1`, [claimId]);
+  await pool.query(`UPDATE market.claim SET status = 2 WHERE entry_id = $1 AND status = 0`, [claim.entry_id]);
+  return "ok";
 }
 
 export async function rejectClaim(claimId: number): Promise<boolean> {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { crowdReady, recordAnswer, recordCall, type Outcome } from "@/lib/crowd-signals";
+import { limited } from "@/lib/rate-limit";
 
 // Краудсигналы: { action: "call" | "answer", entryId, installId, outcome?, priceMismatch? }
 //
@@ -24,6 +25,14 @@ export async function POST(request: Request) {
   const installId = typeof body.installId === "string" ? body.installId.trim() : "";
   if (!Number.isInteger(entryId) || installId.length < 16 || installId.length > 128) {
     return bad("Нужны entryId и installId.");
+  }
+
+  // ⚠️ Потолка не было вовсе, и это стоило дороже, чем кажется: каждый POST идёт в пул
+  // соединений — тот же, что принимает точки записи поездок, `max: 4` (`lib/track-db.ts`).
+  // Анонимный флуд здесь бьёт не по счётчику, а по приёму трасс у человека, который уже
+  // едет. Ключ — ресурс, а не клиент: адресов посетителей у приложения нет намеренно.
+  if (limited(`sig:${entryId}`, 30) || limited("sig:all", 600, 60 * 60_000)) {
+    return bad("Слишком часто — попробуйте позже.", 429);
   }
 
   if (!(await crowdReady())) return bad("Сигналы пока недоступны.", 503);
