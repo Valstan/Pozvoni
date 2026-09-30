@@ -134,4 +134,56 @@ try {
   fail(`проверка счётчика не прошла: ${e.message}`);
 }
 
+// --- предложенная копия базы по ODbL §4.6
+//
+// Пункт чек-листа выхода в свет: «предложена копия адресной базы или файл изменений».
+// Сама копия — `data/addresses.json` в этом публичном репозитории, то есть ровно тот файл,
+// которым отвечает поиск адреса. Отдельная выгрузка в CSV не делается сознательно: два
+// представления расходятся, а молча разошедшаяся выгрузка хуже одного формата.
+//
+// Значит проверять надо не «файл существует», а согласованность обеих сторон обязательства:
+//   · в самой базе — лицензия, атрибуция и граница (без них копию нечем назвать копией);
+//   · в `data/README.md` — те же лицензия и атрибуция, причём атрибуция ССЫЛКОЙ, как того
+//     требует OSMF, и дата снимка, совпадающая с `timestamp_osm_base` исходника.
+// Последнее — самое интересное: без сверки даты страница рано или поздно начнёт описывать
+// выгрузку, которой уже не соответствует база, и это будет правдоподобный, но неверный текст.
+
+try {
+  const index = JSON.parse(await readFile("data/addresses.json", "utf8"));
+  const raw = JSON.parse(await readFile("data/osm/malmyzh-raw.json", "utf8"));
+  const doc = await readFile("data/README.md", "utf8");
+
+  const problems = [];
+  if (index.licence !== "ODbL 1.0") problems.push(`в базе licence=${JSON.stringify(index.licence)}`);
+  if (!index.attribution?.includes("OpenStreetMap contributors")) {
+    problems.push(`в базе attribution=${JSON.stringify(index.attribution)}`);
+  }
+  if (typeof index.boundary !== "string" || !index.boundary.startsWith("relation/")) {
+    problems.push(`в базе boundary=${JSON.stringify(index.boundary)}`);
+  }
+  if (!doc.includes("ODbL")) problems.push("в data/README.md нет упоминания ODbL");
+  // Атрибуция обязана быть ссылкой: OSMF требует не только «© OpenStreetMap contributors»,
+  // но и адрес openstreetmap.org/copyright. Голое слово формально не выполняет требование.
+  if (!/OpenStreetMap contributors\]\(https?:\/\/www\.openstreetmap\.org\/copyright\)/.test(doc)) {
+    problems.push("в data/README.md атрибуция OpenStreetMap не оформлена ссылкой на copyright");
+  }
+  const snapshot = raw.osm3s?.timestamp_osm_base;
+  if (!snapshot) {
+    problems.push("в исходнике нет osm3s.timestamp_osm_base — сверять дату не с чем");
+  } else if (!doc.includes(snapshot)) {
+    problems.push(`дата снимка ${snapshot} не названа в data/README.md`);
+  }
+
+  if (problems.length > 0) {
+    for (const p of problems) fail(`предложенная копия базы: ${p}`);
+  } else {
+    ok(
+      `предложенная копия базы: ODbL 1.0, атрибуция ссылкой, граница ${index.boundary}, ` +
+        `снимок ${snapshot}`,
+    );
+  }
+} catch (e) {
+  fail(`предложенная копия базы не проверяется: ${e.message}`);
+}
+
 process.exit(failed ? 1 : 0);
