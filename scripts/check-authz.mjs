@@ -8,6 +8,7 @@
 //
 // Запуск: npm run check:authz   (базы не нужно)
 
+import { readFileSync } from "node:fs";
 import { esaLinkAllowed } from "../lib/esa-link-rule.ts";
 import { Users } from "../collections/Users.ts";
 
@@ -86,6 +87,26 @@ if (typeof unlock !== "function") {
   eq(await unlock({ req: { user: null } }),
     false, "unlock: гостю нельзя");
 }
+
+// ── 5. Сборка действительно отдаёт эти пути нашим роутам ────────────────────────────────
+// Проверка выше зовёт обработчик, но не отвечает на вопрос «кому принадлежит маршрут».
+// Ответ — в манифесте сборки: пока статический сегмент побеждает `[...slug]` Payload, рядом
+// с ним лежит и наш путь. Потерять его можно не только правкой кода: регенерация Payload
+// перезаписывает `app/(payload)/api/[...slug]/route.ts`, и ошибка была бы молчаливой.
+//
+// ⚠️ На прод этот путь НЕ проверяется пробой: проверка означала бы POST на эндпоинт, который
+// при пустой таблице `users` создал бы супер-админа. Проверка живёт в сборке — там тот же
+// риск отсутствует, потому что никто не отвечает за POST.
+const manifest = readFileSync(".next/server/app-paths-manifest.json", "utf8");
+// Ключи манифеста — с путями групп: `/(app)/api/…/route`, регекспомендования `payload`
+// лежат в `/route`. URL получается вырезанием группы и суффикса.
+const own = new Set(
+  Object.keys(JSON.parse(manifest)).map((k) => k.replace(/^\/[^/]*(?=\/)/, "").replace(/\/route$/, "")),
+);
+for (const p of ["/api/users/first-register", "/api/users/unlock"]) {
+  eq(own.has(p), true, `сборка: ${p} принадлежит нашему роуту, а не catch-all Payload`);
+}
+eq(own.has("/api/[...slug]"), true, "сборка: catch-all Payload на месте (остальное API не сломано)");
 
 if (failed > 0) {
   console.error(`\nпроверка прав доступа: ${failed} провалов`);
