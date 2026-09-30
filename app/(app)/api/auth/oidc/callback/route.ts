@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { exchangeCode, oidcConfig, publicOrigin, randomToken, type Identity } from "@/lib/oidc";
+import { esaLinkAllowed } from "@/lib/esa-link-rule";
 import { FLOW_COOKIE, flowCookieOptions, parseFlow } from "@/lib/oidc-flow";
 import { issuePayloadSession } from "@/lib/oidc-session";
 import { SESSION_COOKIE_OPTIONS } from "@/lib/session-cookie";
@@ -85,6 +86,13 @@ export async function GET(request: Request) {
     const { user } = await payload.auth({ headers: request.headers });
     if (!user || Number(user.id) !== flow.userId) {
       return clear(page("Сессия истекла, привязка не выполнена. Войдите и повторите.", 401));
+    }
+    // Гейт по роли, а не только по живой сессии: ниже эта ветка переносит владение
+    // карточками и удаляет посетительскую учётку мимо access-правил Payload.
+    // см. esaLinkAllowed в lib/esa-link-rule.ts — тем же правилом `start` решает, какой
+    // режим выдать.
+    if (!esaLinkAllowed((user as { role?: string }).role)) {
+      return clear(page("Привязка единого входа доступна только сотрудникам.", 403));
     }
     if (linked && Number(linked.id) !== Number(user.id)) {
       if (linked.role !== "user") {

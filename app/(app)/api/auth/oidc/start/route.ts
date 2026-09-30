@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeUrl, oidcConfig, pkceChallenge, randomToken } from "@/lib/oidc";
+import { esaLinkAllowed } from "@/lib/esa-link-rule";
 import { FLOW_COOKIE, flowCookieOptions, safeNext, type FlowState } from "@/lib/oidc-flow";
 
 // Начало входа через ЕСА.
@@ -25,7 +26,11 @@ export async function GET(request: Request) {
     const { default: config } = await import("@payload-config");
     const payload = await getPayload({ config });
     const { user } = await payload.auth({ headers: request.headers });
-    if (user) {
+    // `link` — только персоналу (`lib/esa-link-rule.ts`): режим не привязывает
+    // `sub`, а сливает две учётки, переносит владение карточками и удаляет посетительскую
+    // оболочку. Посетителю с живой сессией раньше выдавался именно он, и этого было
+    // достаточно, чтобы снести чужую учётку мимо всех гейтов (аудит write-authz, 2026-09-30).
+    if (user && esaLinkAllowed((user as { role?: string }).role)) {
       mode = "link";
       userId = Number(user.id);
     }
