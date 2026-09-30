@@ -21,7 +21,8 @@
     "package": "node scripts/package-release.mjs",
     "db:setup": "node scripts/setup-local-db.mjs",
     "check:track": "node scripts/check-track.mjs",
-    "check:sampling": "node scripts/check-sampling.mjs"
+    "check:sampling": "node scripts/check-sampling.mjs",
+    "check:authz": "node scripts/check-authz.mjs"
   },
   "dependencies": {
     "@payloadcms/db-postgres": "3.90.1",
