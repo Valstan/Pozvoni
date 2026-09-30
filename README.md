@@ -64,6 +64,13 @@ npm run db:setup
 [`docs/PROBE_MAPS_PROVIDER.md`](docs/PROBE_MAPS_PROVIDER.md) §6. Лицензии перенесённых
 данных и шрифтов — [`public/map/LICENSES.md`](public/map/LICENSES.md).
 
+**Адресная база — открытая копия.** `data/addresses.json` (108 улиц, 2 094 адреса) лежит в
+этом репозитории и **и есть** предложенная копия производной базы по ODbL §4.6: данные
+© [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), лицензия ODbL 1.0,
+граница города — `relation/2371919`. Формат, порядок координат, как импортировать и как
+обновить — [`data/README.md`](data/README.md). Если вы берёте эту базу, атрибуция
+OpenStreetMap обязана остаться в вашем продукте.
+
 ## О чём проект
 
 Справочник услуг города, который запускается **не как агрегатор**:
