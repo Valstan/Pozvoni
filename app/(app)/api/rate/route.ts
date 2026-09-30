@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { rate, ratingsReady } from "@/lib/ratings";
 import { limited } from "@/lib/rate-limit";
+import { isOwnCard } from "@/lib/rating-self-vote";
 
 // Звёзды бизнесу или его работнику (спринт 9). Тело: { entryId, workerId?, stars, installId }.
-// Без сессии, анонимно; один голос на устройство в день — первичный ключ. Только карточкам
-// с владельцем: у кого нет кабинета, у того нет и рейтинга.
+// Анонимно — решение владельца 2026-09-10; один голос на устройство в день — первичный ключ.
+// Только карточкам с владельцем: у кого нет кабинета, у того нет и рейтинга. И владелец не
+// оценивает себя (см. `lib/rating-self-vote.ts`).
 
 export const dynamic = "force-dynamic";
 const bad = (m: string, status = 400) => NextResponse.json({ error: m }, { status });
@@ -33,6 +35,25 @@ export async function POST(request: Request) {
   const entry = found.docs[0];
   if (!entry) return bad("Номер не найден.", 404);
   if (!entry.owner) return bad("Оценивать можно только бизнес с кабинетом.", 409);
+
+  // Конфликт интересов: владелец не оценивает себя. Раньше эндпоинт сессию не читал вовсе,
+  // поэтому владелец, вошедший в «ПОЗВОНИ», ставил звёзды своему же бизнесу и своим же
+  // работникам — а это единственный случай, где оценка заведомо не о чужом опыте.
+  //
+  // Читаем сессию только здесь и только чтобы спросить одно поле. Стоимость — одна проверка
+  // подписи куки; посторонний (без куки) платит ноль, и это правильно: он голосует как и раньше.
+  // Ошибка разбора куки означает «сессии нет» — анонимный голосование не отменяет, и новой
+  // дыры тут не появляется: анонимный голос и раньше был разрешён.
+  let sessionUserId: unknown = null;
+  try {
+    const { user } = await payload.auth({ headers: request.headers });
+    sessionUserId = (user as { id?: unknown } | null)?.id ?? null;
+  } catch {
+    sessionUserId = null;
+  }
+  if (isOwnCard(entry.owner, sessionUserId)) {
+    return bad("Свою карточку и своих работников оценить нельзя.", 409);
+  }
 
   const r = await rate(entryId, workerId, installId, stars);
   if (r === "bad_stars") return bad("Звёзды — от 1 до 5.");
