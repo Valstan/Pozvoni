@@ -12,6 +12,7 @@ import { readFileSync } from "node:fs";
 import { esaLinkAllowed } from "../lib/esa-link-rule.ts";
 import { Users } from "../collections/Users.ts";
 import { limited, rateLimitSize } from "../lib/rate-limit.ts";
+import { isOwnCard } from "../lib/rating-self-vote.ts";
 
 let failed = 0;
 const ok = (m) => console.log(`✓ ${m}`);
@@ -144,6 +145,25 @@ eq(own.has("/api/[...slug]"), true, "сборка: catch-all Payload на мес
   eq(limited("жертва-свежая", 1, 60_000, t0 + 9000), false, "потолок: свежий ключ считается");
   eq(limited("жертва-свежая", 1, 60_000, t0 + 9000), true,
     "потолок: чужой флуд не обнулил счётчик, взятый после него");
+}
+
+// ── 7. Владелец не оценивает свою карточку ──────────────────────────────────────────────
+// Правило одно на две формы значения `owner` (число при depth: 0 и объект отношения при
+// большей глубине) и на четыре формы id сессии. Что НЕ закрыто — см. lib/rating-self-vote.ts:
+// вышедший из аккаунта владелец остаётся анонимным, и это решение владельца про анонимные
+// голоса, а не изъян гейта.
+
+{
+  const S = "Позвони";
+  eq(isOwnCard(7, 7), true, "звёзды: владелец не оценивает себя");
+  eq(isOwnCard(7, "7"), true, "звёзды: id сессии строкой — тот же человек");
+  eq(isOwnCard(7, { id: 7 }), true, "звёзды: отношение объектом — тот же человек");
+  eq(isOwnCard({ id: 7 }, 7), true, "звёзды: владелец объектом — тот же человек");
+  eq(isOwnCard(7, 8), false, "звёзды: постороннему можно");
+  eq(isOwnCard(7, null), false, "звёзды: анонимному можно (решение владельца)");
+  eq(isOwnCard(7, undefined), false, "звёзды: без сессии — не самооценка");
+  eq(isOwnCard(null, 7), false, "звёзды: без владельца решает гейт кабинета, а не это правило");
+  eq(isOwnCard(7, {}), false, "звёзды: пустой id сессии — не самооценка");
 }
 
 if (failed > 0) {
