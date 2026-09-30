@@ -38,8 +38,8 @@ payload — сессия 2026-09-19».
 выяснилось, что заявленный в `docs/DEPLOY.md` размер пакета (24,5 МиБ) разошёлся с
 фактическим втрое — цифра приведена к замеру 2026-09-20. См. §«Релизный пакет ел сам себя
 — сессия 2026-09-20».
-**Updated:** 2026-09-29
-**Branch:** main после merge PR #103
+**Updated:** 2026-09-30
+**Branch:** main после merge PR #105
 **Прод:** выкачен с `main` 2026-09-19 (прогон `deploy` 35396966367, success, `0fe97e8` —
 payload 3.90.1; релиз `20260918-213026-0fe97e8`). **На 2026-09-29 прод отстаёт от `main` на несколько коммитов —
 рантайм-кода среди них нет, выкатка не нужна:** изменения в `next.config.mjs` (HSTS,
@@ -118,9 +118,14 @@ CI зелёный): добавлен заголовок **HSTS** (`Strict-Transp
 3. `origin` переключён на `https://github.com/Valstan/Pozvoni.git`, `main` подтянут.
 4. Вложенный worktree `gallant-darwin-5f35b6` (пустая агентская сессия от 19.09) удалён.
 
-**Ожидает brain:** переименование `mailboxes/TaksiMalmyzh` → `mailboxes/Pozvoni` и
-`projects/TaksiMalmyzh.md` → `projects/Pozvoni.md` на его стороне. После ответа —
-второй PR с обновлением ссылок в `AGENTS.md`/`start.md`/`mailbox/README.md`/`PROJECT_STATE.md`.
+**Ожидало brain — исполнено обеими сторонами 2026-09-29/30:** brain переименовал
+`mailboxes/TaksiMalmyzh` → `mailboxes/Pozvoni` и `projects/TaksiMalmyzh.md` →
+`projects/Pozvoni.md` у себя (письмо `2026-09-29-rename-accepted-read-as-pozvoni-since-today`);
+второй PR с обновлением ссылок смержен 2026-09-30 (PR #105, squash `62eb190`, CI
+зелёный): `AGENTS.md`/`start.md`/`mailbox/README.md`/`PROJECT_STATE.md`. Тем же PR —
+строка-указатель `brain_find.py` в `AGENTS.md` (просьба brain из письма
+`2026-09-29-strings-accepted-window-recorded-archives-closed`); ответ brain —
+`mailbox/to-brain/2026-09-30-rename-links-done-brain-find-in-canon.md`.
 
 **Локальный каталог** `D:\valstan\REPO\TaksiMalmyzh` переименовать в `Pozvoni` после
 закрытия сессии (git не зависит от пути каталога).
