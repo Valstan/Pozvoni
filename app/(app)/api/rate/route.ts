@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { rate, ratingsReady } from "@/lib/ratings";
+import { limited } from "@/lib/rate-limit";
 
 // Звёзды бизнесу или его работнику (спринт 9). Тело: { entryId, workerId?, stars, installId }.
 // Без сессии, анонимно; один голос на устройство в день — первичный ключ. Только карточкам
@@ -16,6 +17,13 @@ export async function POST(request: Request) {
   const stars = typeof body.stars === "number" ? body.stars : NaN;
   const installId = typeof body.installId === "string" ? body.installId.trim() : "";
   if (!Number.isInteger(entryId) || installId.length < 16 || installId.length > 128) return bad("Нужны entryId и installId.");
+
+  // Потолка не было: каждый POST идёт в пул соединений, общий с приёмом трасс. Ключ —
+  // ресурс, а не клиент (адресов посетителей приложение намеренно не читает).
+  if (limited(`rate:${entryId}`, 30) || limited("rate:all", 300, 60 * 60_000)) {
+    return bad("Слишком часто — попробуйте позже.", 429);
+  }
+
   if (!(await ratingsReady())) return bad("Оценки пока недоступны.", 503);
 
   const { getPayload } = await import("payload");

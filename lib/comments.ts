@@ -401,7 +401,13 @@ export async function demandByOwner(
   if (!c) return "not_found";
   if (c.state === 2) return "removed";
   if (c.owner_demand_at) {
-    return c.decided_at && c.decided_at > c.owner_demand_at ? "kept" : "already_pending";
+    // ⚠️ Именно `>=`, а не `>`: обе отметки ставятся функцией `now()`, то есть это время
+    // transaction start. Решение персонала физически следует за требованием, но при
+    // совпадении до микросекунды строгое `>` давало «уже ждёт решения» — и гейт на этом
+    // падал. Наблюдалось дважды: на чистом `main` и на ветке с правками, то есть к правкам
+    // отношения не имеет. Равенство здесь означает «решение не раньше требования», а это и
+    // есть смысл ответа «kept».
+    return c.decided_at && c.decided_at >= c.owner_demand_at ? "kept" : "already_pending";
   }
   await pool.query(
     `UPDATE market.comment

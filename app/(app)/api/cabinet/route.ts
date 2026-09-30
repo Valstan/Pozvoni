@@ -71,8 +71,19 @@ export async function POST(request: Request) {
     case "reject": {
       if (user.role !== "superadmin") return bad("Только персонал.", 403);
       if (!Number.isInteger(id)) return bad("Нужен id заявки.");
-      const ok = body.action === "approve" ? await approveClaim(payload, id) : await rejectClaim(id);
-      return ok ? NextResponse.json({ ok: true }) : bad("Заявка не найдена.", 404);
+      if (body.action === "reject") {
+        const done = await rejectClaim(id);
+        return done ? NextResponse.json({ ok: true }) : bad("Заявка не найдена.", 404);
+      }
+      // Три исхода, и их нельзя сливать в один: «не найдена» — это пустая очередь,
+      // «у карточки уже есть владелец» — это отказ по существу, и сказать «заявка не
+      // найдена» значило бы отправить персонала искать несуществующее.
+      const r = await approveClaim(payload, id);
+      if (r === "no_claim") return bad("Заявка не найдена.", 404);
+      if (r === "taken") {
+        return bad("У этой карточки уже есть владелец — заявку подтвердить нельзя.", 409);
+      }
+      return NextResponse.json({ ok: true });
     }
     case "edit_approve":
     case "edit_reject": {

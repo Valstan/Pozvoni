@@ -7,13 +7,50 @@
 
 const hits = new Map<string, { at: number; n: number }>();
 
+// Сколько ключей держим в памяти. Ограничение нужно, чтобы карта не росла бесконечно на
+// ключах, которые задаёт клиент (`entryId`, `commentId`, `lookup`): иначе процесс съедает
+// память по числу запросов.
+const MAX_KEYS = 5000;
+
+/**
+ * Вытесняем лишние ключи, а НЕ чистим карту целиком.
+ *
+ * ⚠️ Прежде здесь стояло `if (hits.size > 5000) hits.clear()`, и это была дыра, а не
+ * защита памяти: обнулялись счётчики **всех** ресурсов сразу. Атакующий, чередуя ~5000
+ * ключей, которые задаёт сам (например `cmt-act:<commentId>` — целое число), обнулял
+ * лимиты поездок, ссылок и комментариев разом, после чего настоящий поток получал чистые
+ * счётчики. Порог в 5000 запросов — секунды.
+ *
+ * Вытесняется по времени последнего обращения, а НЕ по порядку вставки: у `Map` порядок
+ * вставки не совпадает с возрастом (`set` по существующему ключу его не меняет), и
+ * вытеснение по нему сносило бы как раз те ключи, у которых окно только что началось.
+ * Первая версия правки вытесняла именно так — гейт поймал это на первой же проверке.
+ */
+function evict(now: number): void {
+  if (hits.size <= MAX_KEYS) return;
+  // Сначала окнами истёкшие: они не защищают ничего по определению.
+  for (const [key, h] of hits) {
+    if (hits.size <= MAX_KEYS) break;
+    if (now - h.at > 60_000) hits.delete(key);
+  }
+  if (hits.size <= MAX_KEYS) return;
+  const oldest = [...hits.entries()].sort((a, b) => a[1].at - b[1].at);
+  const drop = hits.size - MAX_KEYS;
+  for (let i = 0; i < drop && i < oldest.length; i++) hits.delete(oldest[i][0]);
+}
+
 export function limited(key: string, maxPerWindow: number, windowMs = 60_000, now = Date.now()): boolean {
   const h = hits.get(key);
   if (!h || now - h.at > windowMs) {
     hits.set(key, { at: now, n: 1 });
-    if (hits.size > 5000) hits.clear();
+    evict(now);
     return false;
   }
   h.n += 1;
   return h.n > maxPerWindow;
+}
+
+/** Сколько ключей в памяти. Существует ради гейта: иначе ограничение нечем проверить. */
+export function rateLimitSize(): number {
+  return hits.size;
 }
