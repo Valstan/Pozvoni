@@ -406,6 +406,12 @@ body {
   margin: -0.2rem 0 0.3rem;
 }
 
+.dir-address {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: -0.2rem 0 0.3rem;
+}
+
 .entry-actions {
   margin-top: 0.5rem;
 }

@@ -167,6 +167,7 @@ export async function ownedEntries(payload: Payload, userId: number): Promise<En
 
 export type CardPatch = {
   description?: string;
+  address?: string;
   hours?: string;
   prices?: { label: string; value: string }[];
 };
@@ -185,6 +186,7 @@ export async function updateOwnCard(payload: Payload, userId: number, entryId: n
     id: entryId,
     data: {
       ...(patch.description !== undefined ? { description: clean(patch.description, 600) } : {}),
+      ...(patch.address !== undefined ? { address: clean(patch.address, 200) } : {}),
       ...(patch.hours !== undefined ? { hours: clean(patch.hours, 120) } : {}),
       ...(prices ? { prices } : {}),
     },

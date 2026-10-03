@@ -6,7 +6,7 @@ import type { RequestRow } from "@/lib/market";
 import type { RatingStats } from "@/lib/ratings";
 import CabinetWorkers from "@/components/CabinetWorkers";
 
-// Кабинет владельца: карточка (описание, часы, цены) и вызовы с адресом.
+// Кабинет владельца: карточка (описание, адрес, часы, цены) и вызовы с адресом.
 //
 // Название, телефоны и категорию владелец не правит — это то, что персонал проверял
 // звонком; их меняют через персонал. Всё остальное — его.
@@ -15,6 +15,7 @@ type PriceRow = { label: string; value: string };
 
 function CardForm({ entry, rating }: { entry: Entry; rating?: RatingStats }) {
   const [description, setDescription] = useState(entry.description ?? "");
+  const [address, setAddress] = useState(entry.address ?? "");
   const [hours, setHours] = useState(entry.hours ?? "");
   const [prices, setPrices] = useState<PriceRow[]>(
     (entry.prices ?? []).map((p) => ({ label: p.label, value: p.value })),
@@ -25,7 +26,7 @@ function CardForm({ entry, rating }: { entry: Entry; rating?: RatingStats }) {
     setState("busy");
     const r = await fetch("/api/cabinet", {
       method: "POST", headers: { "content-type": "application/json" }, credentials: "same-origin",
-      body: JSON.stringify({ action: "card", id: entry.id, description, hours, prices }),
+      body: JSON.stringify({ action: "card", id: entry.id, description, address, hours, prices }),
     });
     setState(r.ok ? "saved" : "error");
   }
@@ -38,6 +39,10 @@ function CardForm({ entry, rating }: { entry: Entry; rating?: RatingStats }) {
         <label>
           Описание (что делаете, куда ездите)
           <textarea className="cab-textarea" maxLength={600} value={description} onChange={(e) => setDescription(e.target.value)} />
+        </label>
+        <label>
+          Адрес
+          <input maxLength={200} placeholder="ул. Ленина, 31" value={address} onChange={(e) => setAddress(e.target.value)} />
         </label>
         <label>
           Часы работы
