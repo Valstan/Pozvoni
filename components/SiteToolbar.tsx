@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { headers } from "next/headers";
 import ProfileButton from "@/components/ProfileButton";
 import {
@@ -54,12 +55,20 @@ export default async function SiteToolbar() {
         </a>
       </nav>
 
-      {/* Сессия — за границей Suspense: статическая половина бара (вордмарк и плашки)
-          уходит в браузер, не дожидаясь запроса к базе. Заглушка нейтральная, а не
-          «Войти»: моргнуть «Войти» вошедшему — значит соврать ему на полсекунды. */}
-      <Suspense fallback={<span className="tb-profile is-wait" aria-hidden="true" />}>
-        <ProfileButton site={site} />
-      </Suspense>
+      {/* «О нас / Контакты» — публичная страница с данными владельца (мандат brain
+          2026-10-01). Стоит в навигации на каждой странице: требования об удалении
+          данных приходят туда же, и ссылка должна быть видна без входа. */}
+      <span className="tb-right">
+        <Link className="tb-data" href="/kontakty">
+          О нас / Контакты
+        </Link>
+        {/* Сессия — за границей Suspense: статическая половина бара (вордмарк и плашки)
+            уходит в браузер, не дожидаясь запроса к базе. Заглушка нейтральная, а не
+            «Войти»: моргнуть «Войти» вошедшему — значит соврать ему на полсекунды. */}
+        <Suspense fallback={<span className="tb-profile is-wait" aria-hidden="true" />}>
+          <ProfileButton site={site} />
+        </Suspense>
+      </span>
     </header>
   );
 }
