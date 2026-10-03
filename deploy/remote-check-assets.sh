@@ -29,11 +29,17 @@ fi
 
 # Печатаем только нужные заголовки: полный дамп в публичный лог не нужен, а коды
 # ответов и ключевые заголовки — ровно то, что проверяет #250.
+# HEAD к некоторым location nginx приходит пустым (проверено на .pbf) — тогда
+# добираем заголовки через GET с дампом, тело в /dev/null.
 show() {
   local label="$1" url="$2"
   echo "--- $label ---"
-  curl -sSI --max-time 20 "$url" \
-    | grep -iE '^(HTTP/|cache-control|content-type|expires|etag):' || true
+  local headers
+  headers=$(curl -sSI --max-time 20 "$url" | grep -iE '^(HTTP/|cache-control|content-type|expires|etag):' || true)
+  if [ -z "$headers" ]; then
+    headers=$(curl -sS -D - -o /dev/null --max-time 20 "$url" | grep -iE '^(HTTP/|cache-control|content-type|expires|etag):' || true)
+  fi
+  echo "$headers"
 }
 
 for URL in "$@"; do
