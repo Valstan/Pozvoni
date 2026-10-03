@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { headers } from "next/headers";
 import ProfileButton from "@/components/ProfileButton";
+import ThemeSwitch from "@/components/ThemeSwitch";
 import {
   BRAND,
   ECOSYSTEM_SERVICES_URL,
@@ -59,6 +60,7 @@ export default async function SiteToolbar() {
           2026-10-01). Стоит в навигации на каждой странице: требования об удалении
           данных приходят туда же, и ссылка должна быть видна без входа. */}
       <span className="tb-right">
+        <ThemeSwitch />
         <Link className="tb-data" href="/kontakty">
           О нас / Контакты
         </Link>
