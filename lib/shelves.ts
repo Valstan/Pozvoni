@@ -22,6 +22,16 @@ export { CATEGORY_LABELS };
 /** Порядок полок и секций справочника. Источник один — реестр категорий. */
 export const CATEGORY_ORDER: readonly EntryCategory[] = CATEGORIES;
 
+/**
+ * Полка по значению `?scope=`: id категорийного сайта либо имя остаточной полки.
+ * Единственный экземпляр разбора: его читают и страница, и её метаданные, и второй
+ * экземпляр разъехался бы с первым при первой же правке (класс #087).
+ */
+export function shelfByKey(scope: string | null | undefined): Shelf | undefined {
+  const key = scope?.trim().toLowerCase();
+  return key ? shelves().find((s) => s.key === key) : undefined;
+}
+
 /** Ключ остаточной полки в адресе `?scope=`. */
 export const REST_SHELF = "other";
 

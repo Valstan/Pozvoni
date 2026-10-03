@@ -16,7 +16,7 @@ import {
   siteHref,
   type EntryCategory,
 } from "@/lib/sites";
-import { CATEGORY_LABELS, shelves } from "@/lib/shelves";
+import { CATEGORY_LABELS, shelfByKey } from "@/lib/shelves";
 import { crowdReady, entryStats } from "@/lib/crowd-signals";
 import { currentUser } from "@/lib/session";
 import { marketReady, myClaims } from "@/lib/market";
@@ -28,11 +28,40 @@ import { commentCounts, commentsReady } from "@/lib/comments";
 // а кэшировать надолго не нужно: правки супер-админа должны быть видны сразу.
 export const dynamic = "force-dynamic";
 
-export async function generateMetadata(): Promise<Metadata> {
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ scope?: string }>;
+}): Promise<Metadata> {
   const site = resolveSite((await headers()).get("host"));
+
+  // Заголовок по полке (C1): «Магазины — ПОЗВОНИ — Малмыжский район» вместо общего на
+  // всех скоупах. Берётся из заголовка полки, а не из категории: у «Услуг» их три, и
+  // перечисление дало бы простыню. Дубли «Такси — Такси Малмыж…» нет: если metaTitle
+  // уже начинается с названия полки, остаётся общий заголовок. Описание — общий
+  // tagline: он и так про весь scope лица, а плодить строки на скоуп — класс #087.
+  const scope = (await searchParams).scope;
+  const shelf = shelfByKey(scope);
+  const categories = resolveScope(site, scope);
+  const scopeTitle =
+    shelf?.title ??
+    (categories?.length === 1 ? CATEGORY_LABELS[categories[0]] : null);
+  const title =
+    scopeTitle && !site.metaTitle.startsWith(scopeTitle)
+      ? `${scopeTitle} — ${site.metaTitle}`
+      : `Справочник номеров — ${site.metaTitle}`;
+
   return {
-    title: `Справочник номеров — ${site.metaTitle}`,
+    title,
     description: site.tagline,
+    openGraph: {
+      title,
+      description: site.tagline,
+      type: "website",
+      locale: "ru_RU",
+      siteName: site.title,
+    },
+    twitter: { card: "summary", title, description: site.tagline },
   };
 }
 
@@ -71,7 +100,7 @@ export default async function NomeraPage({
   // Полка с несколькими категориями («Услуги») тоже задаёт стартовую — первую свою:
   // иначе с неё форма опять открывалась бы на «Такси», ровно та ошибка, от которой этот
   // default защищает (см. комментарий к defaultCategory в SuggestForm).
-  const shelfHere = scope ? shelves().find((s) => s.key === scope.trim().toLowerCase()) : undefined;
+  const shelfHere = shelfByKey(scope);
   const defaultCategory =
     shelfHere?.categories[0] ?? (categories?.length === 1 ? categories[0] : undefined);
 
