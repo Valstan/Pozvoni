@@ -12,7 +12,7 @@
 
 type DraftEntry = {
   name: string;
-  category: "taxi" | "shop" | "master" | "brigade" | "cargo" | "other";
+  category: "taxi" | "shop" | "master" | "brigade" | "cargo" | "gos" | "other";
   phones: { number: string }[];
   prices?: { label: string; value: string }[];
   note?: string;

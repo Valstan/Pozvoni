@@ -164,7 +164,7 @@ export interface User {
 export interface Entry {
   id: number;
   name: string;
-  category: 'taxi' | 'shop' | 'master' | 'brigade' | 'cargo' | 'other';
+  category: 'taxi' | 'shop' | 'master' | 'brigade' | 'cargo' | 'gos' | 'other';
   phones: {
     number: string;
     id?: string | null;
