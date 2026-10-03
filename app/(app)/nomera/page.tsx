@@ -7,11 +7,13 @@ import SuggestForm from "@/components/SuggestForm";
 import PageHead from "@/components/PageHead";
 import DirectoryList from "@/components/DirectoryList";
 import {
+  CATEGORIES,
   ROOT_SITE,
   WHOLE_SERVICE_FALLBACK,
   resolveScope,
   resolveSite,
   siteHref,
+  type EntryCategory,
 } from "@/lib/sites";
 import { CATEGORY_LABELS, shelves } from "@/lib/shelves";
 import { crowdReady, entryStats } from "@/lib/crowd-signals";
@@ -36,16 +38,25 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function NomeraPage({
   searchParams,
 }: {
-  searchParams: Promise<{ scope?: string }>;
+  searchParams: Promise<{ scope?: string; q?: string; cat?: string }>;
 }) {
   const site = resolveSite((await headers()).get("host"));
 
   // `?scope=` — общий адрес полки: сюда ведут плашки витрины, и он же остаётся дверью
   // «покажи всё» (`scope=all`, `WHOLE_SERVICE_FALLBACK`). Разбор значений и поведение при
   // мусоре в адресе — `resolveScope` в `lib/sites.ts`.
-  const scope = (await searchParams).scope;
+  const params = await searchParams;
+  const scope = params.scope;
   const categories = resolveScope(site, scope);
   const showAll = categories === null;
+
+  // Поиск `?q=` и чипсы `?cat=` — серверные, без JS: работают и с выключенными скриптами,
+  // и индексируются как обычные адреса. Мусор в `cat` игнорируется, как мусор в `scope`:
+  // человек приходит по ссылке из мессенджера, где адрес мог обрезаться.
+  const q = (params.q ?? "").trim().slice(0, 80);
+  const chipCats = categories ?? [...CATEGORIES];
+  const activeCat =
+    chipCats.find((c) => c === (params.cat ?? "").trim().toLowerCase()) ?? null;
 
   // Заголовки категорий над секциями нужны, только когда категорий больше одной: над
   // единственной полкой «Магазины» заголовок «Магазины» не сообщает ничего сверх того,
@@ -85,13 +96,41 @@ export default async function NomeraPage({
   // Комментарии (2026-09-10): одно число на карточку, сама лента грузится по нажатию.
   const comments = (await commentsReady()) ? await commentCounts(docs) : undefined;
 
+  // Фильтр применяется к уже прочитанному срезу (≤500): лишних запросов в базу нет,
+  // агрегаты (сигналы, рейтинги, карма, комментарии) посчитаны заранее по всем id и
+  // для видимого подмножества берутся из тех же карт. Ищет по названию, адресу,
+  // примечанию и номерам; цифры ищутся и без форматирования («8912» находит
+  // «+7 912 …»).
+  const needle = q.toLowerCase();
+  const needleDigits = needle.replace(/\D/g, "");
+  const visible = docs.filter((d) => {
+    if (activeCat && d.category !== activeCat) return false;
+    if (!needle) return true;
+    const hay = [d.name, d.address ?? "", d.note ?? "", (d.phones ?? []).map((p) => p.number).join(" ")]
+      .join(" ")
+      .toLowerCase();
+    if (hay.includes(needle)) return true;
+    return needleDigits.length > 0 && hay.replace(/\D/g, "").includes(needleDigits);
+  });
+
+  // Ссылки чипсов и сброса: сохраняют соседние параметры, мусор не плодят.
+  const filterHref = (cat: EntryCategory | null, keepQuery: boolean) => {
+    const p = new URLSearchParams();
+    if (scope) p.set("scope", scope);
+    if (cat) p.set("cat", cat);
+    if (keepQuery && q) p.set("q", q);
+    const s = p.toString();
+    return `/nomera${s ? `?${s}` : ""}`;
+  };
+  const filtering = q !== "" || activeCat !== null;
+
   return (
     <main className="page" id="main" tabIndex={-1}>
       <PageHead title="Справочник номеров" sub={site.tagline}>
         <Link href="/">← к карте</Link>
         {site.id !== ROOT_SITE.id && !showAll && (
           <a href={siteHref(site, ROOT_SITE, "/nomera", WHOLE_SERVICE_FALLBACK)}>
-            Весь справочник города
+            Весь справочник района
           </a>
         )}
       </PageHead>
@@ -104,14 +143,76 @@ export default async function NomeraPage({
         при звонке.
       </p>
 
+      {/* Поиск и чипсы категорий (B1): обычная GET-форма и ссылки — без JS. Форма шлёт
+          относительный action, поэтому на категорийном домене фильтр остаётся в нём. */}
+      <form className="dir-filter" method="get" action="/nomera" role="search">
+        {scope && <input type="hidden" name="scope" value={scope} />}
+        {activeCat && <input type="hidden" name="cat" value={activeCat} />}
+        <label className="search-label" htmlFor="nomera-q">
+          Поиск по справочнику
+        </label>
+        <span className="dir-filter-row">
+          <input
+            id="nomera-q"
+            className="search-input"
+            type="search"
+            name="q"
+            defaultValue={q}
+            maxLength={80}
+            placeholder="название, адрес или номер"
+          />
+          <button className="dir-filter-btn" type="submit">
+            Найти
+          </button>
+        </span>
+      </form>
+
+      {chipCats.length > 1 && (
+        <nav className="dir-chips" aria-label="Категории">
+          <a
+            className={activeCat ? "dir-chip" : "dir-chip is-current"}
+            href={filterHref(null, true)}
+            aria-current={!activeCat ? "true" : undefined}
+          >
+            Все
+          </a>
+          {chipCats.map((c) => (
+            <a
+              key={c}
+              className={activeCat === c ? "dir-chip is-current" : "dir-chip"}
+              href={filterHref(c, true)}
+              aria-current={activeCat === c ? "true" : undefined}
+            >
+              {CATEGORY_LABELS[c]}
+            </a>
+          ))}
+        </nav>
+      )}
+
+      {filtering && (
+        <p className="page-sub" role="status">
+          {visible.length === 0
+            ? "Ничего не нашлось. "
+            : `Найдено: ${visible.length} из ${docs.length}. `}
+          <a href={filterHref(null, false)}>Показать всё</a>
+        </p>
+      )}
+
       {docs.length === 0 && (
         <p className="page-sub">
           Пока пусто: номера появляются после проверки. Предложите свой — форма ниже.
         </p>
       )}
 
+      {docs.length > 0 && visible.length === 0 && (
+        <p className="page-sub">
+          Ничего не подошло — <a href="#predlozhit">предложите номер</a>: проверим и
+          добавим.
+        </p>
+      )}
+
       <DirectoryList
-        entries={docs}
+        entries={visible}
         showHeadings={showHeadings}
         stats={stats}
         viewer={viewer}

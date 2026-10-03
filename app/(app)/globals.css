@@ -412,6 +412,60 @@ body {
   margin: -0.2rem 0 0.3rem;
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   Поиск и чипсы категорий на /nomera (B1): серверные, без JS — GET-форма и ссылки.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.dir-filter {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.dir-filter-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.dir-filter-row .search-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.dir-filter-btn {
+  padding: 0.7rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: 0;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dir-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.dir-chip {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  background: var(--panel);
+  color: inherit;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.dir-chip.is-current {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  font-weight: 600;
+}
+
 .entry-actions {
   margin-top: 0.5rem;
 }
