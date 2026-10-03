@@ -57,8 +57,8 @@ for URL in "$@"; do
   show "воркер .mjs" "$URL/map/maplibre/$MAPLIBRE/maplibre-gl-worker.mjs"
 
   # 3. Шрифт карты (.pbf) — единственные шрифтовые ассеты (веб-шрифтов нет, системные).
-  # HEAD к большому файлу может прийти пустым — тогда добираем код и тип через GET.
-  show "шрифт .pbf" "$URL/map/fonts/Noto Sans Regular/0-255.pbf"
+  # Пробел в имени каталога — в %20: curl с сырым пробелом в URL не отдаёт заголовки.
+  show "шрифт .pbf" "$URL/map/fonts/Noto%20Sans%20Regular/0-255.pbf"
 
   # 4. Иконка — представитель бинарных ассетов вне _next.
   show "icon.svg" "$URL/icon.svg"
