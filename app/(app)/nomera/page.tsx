@@ -98,7 +98,7 @@ export default async function NomeraPage({
 
       <p className="page-sub">
         {categories === null
-          ? "Весь справочник Малмыжа. "
+          ? "Весь справочник района. "
           : `Полка: ${categories.map((c) => CATEGORY_LABELS[c]).join(", ")}. `}
         Нажмите на номер — телефон наберёт сам. Цены справочные, не оферта: уточняйте
         при звонке.
