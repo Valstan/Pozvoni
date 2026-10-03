@@ -55,13 +55,13 @@ export default async function NomeraPage({
   // Полка, выбранная скоупом, — она же категория по умолчанию в форме предложения. Без
   // этого человек, пришедший с пустой плашки «Магазины», предложил бы магазин в такси:
   // форма всегда открывалась на «Такси».
+  //
+  // Полка с несколькими категориями («Услуги») тоже задаёт стартовую — первую свою:
+  // иначе с неё форма опять открывалась бы на «Такси», ровно та ошибка, от которой этот
+  // default защищает (см. комментарий к defaultCategory в SuggestForm).
   const shelfHere = scope ? shelves().find((s) => s.key === scope.trim().toLowerCase()) : undefined;
   const defaultCategory =
-    shelfHere?.categories.length === 1
-      ? shelfHere.categories[0]
-      : categories?.length === 1
-        ? categories[0]
-        : undefined;
+    shelfHere?.categories[0] ?? (categories?.length === 1 ? categories[0] : undefined);
 
   const payload = await getPayload({ config });
   // Access-правило коллекции само отдаёт анониму только опубликованное;
