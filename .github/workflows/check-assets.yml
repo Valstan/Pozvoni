@@ -48,8 +48,9 @@ jobs:
           SMOKE_URL: ${{ secrets.DEPLOY_SMOKE_URL }}
         # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой (мандат D-046).
         # Версия maplibre — из package-lock, а не зашитая: путь к воркеру версионный.
+        # package-lock в репозитории, node_modules не нужен (npm ci здесь не делаем).
         run: |
-          MAPLIBRE=$(node -p "require('./node_modules/maplibre-gl/package.json').version")
+          MAPLIBRE=$(node -p "require('./package-lock.json').packages['node_modules/maplibre-gl'].version")
           set +e
           ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SMOKE_URL" "$MAPLIBRE" \
             < deploy/remote-check-assets.sh 2>/dev/null
