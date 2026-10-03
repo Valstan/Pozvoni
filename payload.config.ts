@@ -28,18 +28,26 @@ async function onInit(payload: Payload): Promise<void> {
     payload.logger.info("Создан супер-админ admin/admin — сменить пароль при первом входе!");
   }
 
-  // Черновики номеров: идемпотентно, по названию. Публикация — только руками
+  // Черновики номеров: досеиваем недостающее по названию. Публикация — только руками
   // супер-админа после проверки (гейт владельца 2026-08-29).
-  const entries = await payload.count({ collection: "entries" });
-  if (entries.totalDocs === 0) {
-    for (const draft of directoryDraft) {
+  //
+  // Почему не «если таблица пуста». Первый сид 2026-08-29 так и работал — и любой пакет,
+  // добавленный позже, не доехал бы ни на прод, ни на существующие локальные базы: таблица
+  // там уже непуста. Сверка идёт по точному названию: одноимённые с разным адресом заводит
+  // только персонал руками, сид вторых не плодит.
+  for (const draft of directoryDraft) {
+    const found = await payload.count({
+      collection: "entries",
+      where: { name: { equals: draft.name } },
+    });
+    if (found.totalDocs === 0) {
       await payload.create({
         collection: "entries",
         data: { ...draft, status: "draft" },
       });
     }
-    payload.logger.info(`Засеяно черновиков справочника: ${directoryDraft.length} (не опубликованы)`);
   }
+  payload.logger.info(`Черновики справочника сверены с пакетом: ${directoryDraft.length} в пакете`);
 
   // Регламент трасс. M0.A §3.4 требует не написанной процедуры, а показанной работы
   // расписания — значит кто-то должен её запускать, и это единственное место в проекте,
