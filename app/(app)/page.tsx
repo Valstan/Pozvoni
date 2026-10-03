@@ -136,7 +136,7 @@ export default async function Home() {
           from={site}
           shelves={shelfList}
           counts={counts}
-          title="Другие полки Малмыжа"
+          title="Другие полки района"
           exclude={site.id}
         />
       )}
