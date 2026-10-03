@@ -20,6 +20,24 @@
   }
 }
 
+/* Ручной выбор темы (ThemeSwitch): побеждает системную. Значения продублированы с
+   блоками выше намеренно — это константы палитры, второго источника у них нет. */
+[data-theme="light"] {
+  --bg: #f6f5f2;
+  --panel: #ffffff;
+  --ink: #1b1a17;
+  --muted: #6b675f;
+  --line: #dcd8d0;
+}
+
+[data-theme="dark"] {
+  --bg: #161513;
+  --panel: #211f1c;
+  --ink: #ece9e3;
+  --muted: #a29c92;
+  --line: #383430;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -850,6 +868,25 @@ body {
   color: var(--muted);
   font-size: 0.85rem;
   white-space: nowrap;
+}
+
+.tb-theme {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.tb-theme:hover,
+.tb-theme:focus-visible {
+  border-color: var(--accent);
+  color: inherit;
+  outline: none;
 }
 
 .tb-profile {

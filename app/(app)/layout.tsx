@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { headers } from "next/headers";
+import Script from "next/script";
 import Metrika from "@/components/Metrika";
 import SiteToolbar from "@/components/SiteToolbar";
 import { resolveSite } from "@/lib/sites";
@@ -28,8 +29,17 @@ export async function generateMetadata(): Promise<Metadata> {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#f6f5f2",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f6f5f2" },
+    { media: "(prefers-color-scheme: dark)", color: "#161513" },
+  ],
 };
+
+// Выбор темы применяется ДО отрисовки: сохранённое в localStorage значение ставится на
+// <html> раньше первого paint, и тёмная не моргает светлой. Скрипт инлайн и синхронный
+// намеренно; CSP его разрешает (`script-src 'unsafe-inline'`, next.config.mjs). Без
+// сохранённого выбора — ничего: решает prefers-color-scheme из CSS (режим «авто»).
+const THEME_BOOT = `try{var t=localStorage.getItem("pozvoni-theme");if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
 
 // ⚠️ Тулбар в корневом layout делает динамическими ВСЕ страницы группы `(app)`: он читает
 // `Host` и сессию. Сегодня это ничего не ломает — все семь страниц и так объявляли
@@ -44,6 +54,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ru">
       <body>
+        <Script id="pozvoni-theme" strategy="beforeInteractive">
+          {THEME_BOOT}
+        </Script>
         {/* Бар добавляет четыре-шесть остановок табуляции перед содержимым на каждой
             странице — без этой ссылки клавиатурой до текста не добраться коротким путём. */}
         <a className="skip-link" href="#main">
