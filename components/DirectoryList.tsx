@@ -7,6 +7,7 @@ import { statsLine, type EntryStats } from "@/lib/crowd-signals";
 import CallPhones from "@/components/CallPhones";
 import EntryActions from "@/components/EntryActions";
 import EntryComments from "@/components/EntryComments";
+import { FavoriteStar } from "@/components/Favorites";
 import RateWidget from "@/components/RateWidget";
 import KarmaVote from "@/components/KarmaVote";
 import { ratingLine, type RatingStats } from "@/lib/ratings";
@@ -36,6 +37,7 @@ function EntryCard({
       <div className="dir-name">
         {entry.name}
         {stars && <span className="dir-rating"> {stars}</span>}
+        <FavoriteStar id={entry.id} />
       </div>
       {entry.address && <div className="dir-address">{entry.address}</div>}
       {entry.hours && <div className="dir-hours">{entry.hours}</div>}

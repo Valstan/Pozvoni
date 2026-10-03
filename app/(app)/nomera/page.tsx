@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import SuggestForm from "@/components/SuggestForm";
 import PageHead from "@/components/PageHead";
 import DirectoryList from "@/components/DirectoryList";
+import { FavoritesBar, type FavItem } from "@/components/Favorites";
 import {
   CATEGORIES,
   ROOT_SITE,
@@ -124,6 +125,14 @@ export default async function NomeraPage({
   };
   const filtering = q !== "" || activeCat !== null;
 
+  // Компакт для секции «Моё»: только JSON-значения, без Map — границу сервер→клиент
+  // переезжает штатно. Берём из видимого среза: секция показывает то же, что список.
+  const favItems: FavItem[] = visible.map((d) => ({
+    id: d.id,
+    name: d.name,
+    phones: (d.phones ?? []).map((p) => p.number),
+  }));
+
   return (
     <main className="page" id="main" tabIndex={-1}>
       <PageHead title="Справочник номеров" sub={site.tagline}>
@@ -210,6 +219,8 @@ export default async function NomeraPage({
           добавим.
         </p>
       )}
+
+      <FavoritesBar items={favItems} />
 
       <DirectoryList
         entries={visible}
