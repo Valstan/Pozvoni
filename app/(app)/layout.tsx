@@ -20,6 +20,10 @@ export async function generateMetadata(): Promise<Metadata> {
     // ставится только для заведённого домена — ссылка на несуществующий хост
     // хуже, чем её отсутствие.
     alternates: site.live ? { canonical: `https://${site.host}/` } : undefined,
+    // Иконка для «добавить на домашний экран» у Apple: PNG 192 из public/icons
+    // (сгенерированы из app/icon.svg через sharp). Манифест — app/manifest.ts.
+    icons: { apple: "/icons/icon-192.png" },
+    appleWebApp: { capable: true, title: "Позвони", statusBarStyle: "default" },
     // Глобальный noindex убран 2026-09-29: сайт работает открыто, главная и справочник
     // должны быть в индексе. Страницы с личными данными (/zapis, /poezdki, /kabinet,
     // /t/*, /admin, /api/*) имеют свой локальный robots: { index: false, follow: false }.
