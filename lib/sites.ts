@@ -33,7 +33,7 @@
  * union там станет шире, чем `EntryCategory`, на чём сборка типов и упадёт. Ассерт
  * времени импорта такого не поймал бы: он видит только этот файл.
  */
-export const CATEGORIES = ["taxi", "shop", "master", "brigade", "cargo", "other"] as const;
+export const CATEGORIES = ["taxi", "shop", "master", "brigade", "cargo", "gos", "other"] as const;
 
 export type EntryCategory = (typeof CATEGORIES)[number];
 

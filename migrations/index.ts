@@ -15,6 +15,7 @@ import * as migration_20260910_140000_entry_edits from './20260910_140000_entry_
 import * as migration_20260910_160000_comments from './20260910_160000_comments';
 import * as migration_20260918_212053_reset_password_requested_at from './20260918_212053_reset_password_requested_at';
 import * as migration_20261003_120000_entry_address from './20261003_120000_entry_address';
+import * as migration_20261003_140000_entry_gos_category from './20261003_140000_entry_gos_category';
 
 export const migrations = [
   {
@@ -101,5 +102,10 @@ export const migrations = [
     up: migration_20261003_120000_entry_address.up,
     down: migration_20261003_120000_entry_address.down,
     name: '20261003_120000_entry_address'
+  },
+  {
+    up: migration_20261003_140000_entry_gos_category.up,
+    down: migration_20261003_140000_entry_gos_category.down,
+    name: '20261003_140000_entry_gos_category'
   },
 ];

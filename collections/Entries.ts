@@ -47,6 +47,7 @@ export const Entries: CollectionConfig = {
         { label: "Мастера и ремонт", value: "master" },
         { label: "Бригады и работы", value: "brigade" },
         { label: "Доставка и грузы", value: "cargo" },
+        { label: "Госучреждения", value: "gos" },
         { label: "Другое", value: "other" },
       ],
     },

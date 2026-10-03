@@ -13,5 +13,6 @@ export const CATEGORY_LABELS: Record<EntryCategory, string> = {
   master: "Мастера и ремонт",
   brigade: "Бригады и работы",
   cargo: "Доставка и грузы",
+  gos: "Госучреждения",
   other: "Другое",
 };
