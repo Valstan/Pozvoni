@@ -9,43 +9,53 @@
 # С бокса, а не с раннера GitHub: раннер до прод-домена не достучался (см.
 # remote-smoke.sh) — проверка с раннера была бы вечно красной.
 #
-# Аргументы: <публичный URL> [<версия maplibre>]
+# ⚠️ Аргументы идут через ssh, а тот склеивает их в строку, которую удалённый
+# shell разбирает заново (G30): публичных адресов может быть НЕСКОЛЬКО через пробел.
+# Поэтому maplibre — первым аргументом (single token), а адреса — остальными, и их
+# скрипт перебирает в цикле, как remote-smoke.sh.
+#
+# Аргументы: <версия maplibre> <публичный URL> [<публичный URL> ...]
 # Диагностика — в stdout (вызывающий workflow глушит stderr ssh, AGENTS.md D-038).
 
 set -euo pipefail
+
+MAPLIBRE="${1:?не задана версия maplibre}"
+shift
 
 if [ "$#" -eq 0 ]; then
   echo "не задан публичный URL"
   exit 1
 fi
 
-URL="${1:?не задан публичный URL}"
-MAPLIBRE="${2:-6.6.0}"
-
 # Печатаем только нужные заголовки: полный дамп в публичный лог не нужен, а коды
 # ответов и ключевые заголовки — ровно то, что проверяет #250.
 show() {
-  local label="$1" path="$2"
-  echo "--- $label ($path) ---"
-  curl -sSI --max-time 20 "$URL$path" \
+  local label="$1" url="$2"
+  echo "--- $label ---"
+  curl -sSI --max-time 20 "$url" \
     | grep -iE '^(HTTP/|cache-control|content-type|expires|etag):' || true
 }
 
-# 1. Чанк _next/static — берём из главной страницы, чтобы не закладывать в хэш руками.
-chunk=$(curl -sS --max-time 20 "$URL/" | grep -oE '/_next/static/[^"]+\.(js|css)' | head -n 1)
-if [ -z "$chunk" ]; then
-  echo "не нашёл ассет _next/static на главной"
-  exit 1
-fi
-show "_next/static" "$chunk"
+for URL in "$@"; do
+  echo "=== $URL ==="
 
-# 2. Воркер MapLibre (.mjs) — путь версионный, версия приходит аргументом.
-show "воркер .mjs" "/map/maplibre/$MAPLIBRE/maplibre-gl-worker.mjs"
+  # 1. Чанк _next/static — берём из главной страницы, чтобы не закладывать хэш руками.
+  chunk=$(curl -sS --max-time 20 "$URL/" | grep -oE '/_next/static/[^"]+\.(js|css)' | head -n 1)
+  if [ -z "$chunk" ]; then
+    echo "не нашёл ассет _next/static на главной"
+    exit 1
+  fi
+  show "_next/static $chunk" "$URL$chunk"
 
-# 3. Шрифт карты (.pbf) — единственные шрифтовые ассеты (веб-шрифтов нет, системные).
-show "шрифт .pbf" "/map/fonts/Noto Sans Regular/0-255.pbf"
+  # 2. Воркер MapLibre (.mjs) — путь версионный, версия приходит аргументом.
+  show "воркер .mjs" "$URL/map/maplibre/$MAPLIBRE/maplibre-gl-worker.mjs"
 
-# 4. Иконка — представитель бинарных ассетов вне _next.
-show "icon.svg" "/icon.svg"
+  # 3. Шрифт карты (.pbf) — единственные шрифтовые ассеты (веб-шрифтов нет, системные).
+  # HEAD к большому файлу может прийти пустым — тогда добираем код и тип через GET.
+  show "шрифт .pbf" "$URL/map/fonts/Noto Sans Regular/0-255.pbf"
+
+  # 4. Иконка — представитель бинарных ассетов вне _next.
+  show "icon.svg" "$URL/icon.svg"
+done
 
 echo "проверка заголовков ассетов завершена"

@@ -49,10 +49,13 @@ jobs:
         # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой (мандат D-046).
         # Версия maplibre — из package-lock, а не зашитая: путь к воркеру версионный.
         # package-lock в репозитории, node_modules не нужен (npm ci здесь не делаем).
+        # MAPLIBRE — ПЕРВЫМ аргументом: SMOKE_URL содержит несколько адресов через
+        # пробел, и ssh пересобирает аргументы на удалённой стороне (G30) — иначе
+        # версия превращается во второй URL.
         run: |
           MAPLIBRE=$(node -p "require('./package-lock.json').packages['node_modules/maplibre-gl'].version")
           set +e
-          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SMOKE_URL" "$MAPLIBRE" \
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$MAPLIBRE" "$SMOKE_URL" \
             < deploy/remote-check-assets.sh 2>/dev/null
           rc=$?
           set -e
