@@ -29,8 +29,9 @@ MARKER_RE='X-Forwarded-For[[:space:]]+\$proxy_add_x_forwarded_for'
 
 sudo -n true || { echo "нет passwordless sudo — правку конфига делать некому"; exit 1; }
 
-# Найти все файлы конфигурации nginx с проблемной директивой.
-mapfile -t FILES < <(sudo grep -rlE "$MARKER_RE" /etc/nginx/ 2>/dev/null || true)
+# Найти все файлы конфигурации nginx с проблемной директивой. Бэкапы (*.bak*)
+# исключаем: nginx их не грузит, а их «правка» портит достоверность отката.
+mapfile -t FILES < <(sudo grep -rlE "$MARKER_RE" /etc/nginx/ 2>/dev/null | grep -v '\.bak' || true)
 
 if [ "${#FILES[@]}" -eq 0 ]; then
   echo "проблемная директива не найдена — уже применено или конфиг другой"
