@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Правка XFF на nginx бокса (мандат brain 2026-10-02, #057/G413).
+#
+# Проблема: в server-блоках стоит `proxy_set_header X-Forwarded-For
+# $proxy_add_x_forwarded_for` — дополнение к входящему заголовку, а не
+# перезапись. Первое значение списка контролирует клиент, поэтому подделанный
+# XFF уходит в приложение как есть, и rate-limit обходится ротацией заголовка.
+#
+# Лечение: перезапись `$remote_addr` — заголовок всегда содержит реальный
+# адрес пира (прокси хостера), подделать его клиент не может. Цена: в списке
+# остаётся один адрес прокси вместо адреса посетителя — решение владельца
+# бокса по письму brain 2026-10-02, принято как данность.
+#
+# Скрипт идемпотентен: если старая директива нигде не встречается, конфиг не
+# трогает. Бэкап каждого изменённого файла — рядом, с датой. Проверка
+# `nginx -t` строго ДО перезагрузки; при неуспехе — восстановление из бэкапов.
+#
+# ⚠️ Диагностика печатается в stdout, а не в stderr: вызывающий workflow глушит
+# stderr клиента ssh целиком, потому что тот при отказе печатает хост и порт
+# отдельными словами, а маскировка GitHub ловит только полное значение секрета
+# (AGENTS.md, D-038).
+
+set -euo pipefail
+
+MARKER='proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for'
+FIXED='proxy_set_header X-Forwarded-For $remote_addr'
+
+sudo -n true || { echo "нет passwordless sudo — правку конфига делать некому"; exit 1; }
+
+# Найти все файлы конфигурации nginx с проблемной директивой.
+mapfile -t FILES < <(sudo grep -rlF "$MARKER" /etc/nginx/ 2>/dev/null || true)
+
+if [ "${#FILES[@]}" -eq 0 ]; then
+  echo "проблемная директива не найдена — уже применено или конфиг другой"
+  echo "что сейчас в конфиге:"
+  sudo nginx -T 2>/dev/null | grep -F "X-Forwarded-For" || true
+  exit 0
+fi
+
+echo "найдено файлов с проблемной директивой: ${#FILES[@]}"
+for f in "${FILES[@]}"; do
+  sudo cp -a "$f" "$f.bak-20261003-xff"
+  sudo sed -i "s|$MARKER|$FIXED|g" "$f"
+  echo "изменён $f:"
+  sudo diff "$f.bak-20261003-xff" "$f" || true
+done
+
+# Проверка синтаксиса ДО перезагрузки; при неуспехе — восстановление.
+if ! sudo nginx -t; then
+  echo "nginx -t не пройден, восстанавливаю из бэкапов"
+  for f in "${FILES[@]}"; do
+    sudo cp -a "$f.bak-20261003-xff" "$f"
+  done
+  exit 1
+fi
+
+sudo systemctl reload nginx
+echo "nginx перезагружен"
+
+# Авторитетная проверка: в распарсенном конфиге нет старой директивы.
+if sudo nginx -T 2>/dev/null | grep -qF "$MARKER"; then
+  echo "СТАРАЯ ДИРЕКТИВА ВСЁ ЕЩЁ В КОНФИГЕ"
+  exit 1
+fi
+echo "что теперь в конфиге:"
+sudo nginx -T 2>/dev/null | grep -F "X-Forwarded-For" || true
