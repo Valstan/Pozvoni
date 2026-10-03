@@ -10,11 +10,12 @@ import { SITES } from "@/lib/sites";
 //   /nomera     — справочник номеров
 //   /dannye     — уведомление о данных
 //   /pravila    — правила комментариев
+//   /kontakty   — контакты владельца (публичные каналы связи, мандат brain 2026-10-01)
 //
 // Страницы без контента для поисковика (/zapis, /poezdki, /kabinet) не включены:
 // они либо требуют входа, либо показывают 404 для гостя.
 
-const PUBLIC_PATHS = ["/", "/nomera", "/dannye", "/pravila"];
+const PUBLIC_PATHS = ["/", "/nomera", "/dannye", "/pravila", "/kontakty"];
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const lastModified = new Date();
