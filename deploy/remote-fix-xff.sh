@@ -22,13 +22,15 @@
 
 set -euo pipefail
 
-MARKER='proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for'
-FIXED='proxy_set_header X-Forwarded-For $remote_addr'
+# Маркер — регулярка, а не строка: в разных файлах между именем заголовка и
+# значением стоит разное число пробелов (nginx -T к тому же выравнивает
+# колонки), и поиск по точной строке молча пропускал часть директив.
+MARKER_RE='X-Forwarded-For[[:space:]]+\$proxy_add_x_forwarded_for'
 
 sudo -n true || { echo "нет passwordless sudo — правку конфига делать некому"; exit 1; }
 
 # Найти все файлы конфигурации nginx с проблемной директивой.
-mapfile -t FILES < <(sudo grep -rlF "$MARKER" /etc/nginx/ 2>/dev/null || true)
+mapfile -t FILES < <(sudo grep -rlE "$MARKER_RE" /etc/nginx/ 2>/dev/null || true)
 
 if [ "${#FILES[@]}" -eq 0 ]; then
   echo "проблемная директива не найдена — уже применено или конфиг другой"
@@ -40,7 +42,8 @@ fi
 echo "найдено файлов с проблемной директивой: ${#FILES[@]}"
 for f in "${FILES[@]}"; do
   sudo cp -a "$f" "$f.bak-20261003-xff"
-  sudo sed -i "s|$MARKER|$FIXED|g" "$f"
+  # Одинарные кавычки: sed получает \$ как буквальный знак доллара, а не якорь.
+  sudo sed -i -E 's/(X-Forwarded-For)[[:space:]]+\$proxy_add_x_forwarded_for/\1 $remote_addr/g' "$f"
   echo "изменён $f:"
   sudo diff "$f.bak-20261003-xff" "$f" || true
 done
@@ -58,7 +61,7 @@ sudo systemctl reload nginx
 echo "nginx перезагружен"
 
 # Авторитетная проверка: в распарсенном конфиге нет старой директивы.
-if sudo nginx -T 2>/dev/null | grep -qF "$MARKER"; then
+if sudo nginx -T 2>/dev/null | grep -qE "$MARKER_RE"; then
   echo "СТАРАЯ ДИРЕКТИВА ВСЁ ЕЩЁ В КОНФИГЕ"
   exit 1
 fi
