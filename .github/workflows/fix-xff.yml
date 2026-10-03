@@ -1,0 +1,63 @@
+name: fix-xff
+
+# Правка XFF на nginx бокса (мандат brain 2026-10-02, #057/G413).
+# Только ручной запуск: меняет живой конфиг nginx, а не код — потому и не
+# привязан к push/PR. Применять после каждого перезаписывания конфига бокса
+# чужим bootstrap'ом (тогда директива возвращается): скрипт идемпотентен.
+#
+# Зачем отдельный workflow, а не шаг в deploy: deploy перезаписывает релиз и
+# перезапускает приложение — тяжёлый инструмент для правки одного заголовка,
+# и его смоук проверяет приложение, а не nginx.
+#
+# Все адреса, порты и пути приходят СЕКРЕТАМИ, не через vars: значения vars
+# печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
+# D-038). Здесь нет ни одного echo с фактами о сервере.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: fix-xff
+  cancel-in-progress: false
+
+jobs:
+  fix-xff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Правка XFF на боксе
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой:
+        # текст внутри команды прошёл бы четыре парсера подряд (мандат D-046).
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s < deploy/remote-fix-xff.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
