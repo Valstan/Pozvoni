@@ -1,0 +1,61 @@
+name: check-assets
+
+# Проверка заголовков ассетов на проде (D-096 #250). Только ручной запуск: читает
+# заголовки с прода и ничего не меняет.
+#
+# Зачем отдельный workflow, а не шаг в deploy: смоук в deploy отвечает на «релиз
+# поднялся?» и проверяет типы отдачи, а #250 — про Cache-Control и Content-Type
+# ассетов; смешивать их значит делать смоук вечно красным из-за заголовков.
+#
+# Все адреса, порты и пути приходят СЕКРЕТАМИ, не через vars (AGENTS.md, D-038).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: check-assets
+  cancel-in-progress: false
+
+jobs:
+  check-assets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Заголовки ассетов с прода
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SMOKE_URL: ${{ secrets.DEPLOY_SMOKE_URL }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой (мандат D-046).
+        # Версия maplibre — из package-lock, а не зашитая: путь к воркеру версионный.
+        run: |
+          MAPLIBRE=$(node -p "require('./node_modules/maplibre-gl/package.json').version")
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SMOKE_URL" "$MAPLIBRE" \
+            < deploy/remote-check-assets.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
