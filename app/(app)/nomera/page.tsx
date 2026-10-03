@@ -154,6 +154,40 @@ export default async function NomeraPage({
   };
   const filtering = q !== "" || activeCat !== null;
 
+  // Разметка для поиска и нейроответов (C2, вето D-088 снято владельцем 2026-10-03):
+  // ровно то, что видит человек, — видимый срез (фильтр включён). Телефон — первый
+  // номер карточки; адрес — строкой как есть, без разбора на село/улицу (парсить
+  // свободный текст значило бы выдумывать структуру); часов нет осознанно —
+  // openingHours требует ISO-формат, а у нас свободный текст, и невалидная разметка
+  // хуже её отсутствия. `</` экранируется: строка едет в скрипт как есть.
+  const jsonLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: `Справочник номеров — ${site.metaTitle}`,
+    itemListElement: visible.map((d, i) => {
+      const firstPhone = (d.phones ?? [])[0]?.number;
+      return {
+        "@type": "ListItem",
+        position: i + 1,
+        item: {
+          "@type": "LocalBusiness",
+          name: d.name,
+          ...(firstPhone ? { telephone: firstPhone } : {}),
+          ...(d.address
+            ? {
+                address: {
+                  "@type": "PostalAddress",
+                  streetAddress: d.address,
+                  addressLocality: "Малмыжский район",
+                  addressCountry: "RU",
+                },
+              }
+            : {}),
+        },
+      };
+    }),
+  }).replace(/<\//g, "<\\/");
+
   // Компакт для секции «Моё»: только JSON-значения, без Map — границу сервер→клиент
   // переезжает штатно. Берём из видимого среза: секция показывает то же, что список.
   const favItems: FavItem[] = visible.map((d) => ({
@@ -250,6 +284,8 @@ export default async function NomeraPage({
       )}
 
       <FavoritesBar items={favItems} />
+
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd }} />
 
       <DirectoryList
         entries={visible}

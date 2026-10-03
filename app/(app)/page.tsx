@@ -80,8 +80,21 @@ export default async function Home() {
   const comments =
     forCards.length && (await commentsReady()) ? await commentCounts(entries) : undefined;
 
+  // Сущность сайта для поиска и нейроответов (C2, вето D-088 снято владельцем
+  // 2026-10-03). Только то, что правда: имя лица, tagline, канонический адрес живого
+  // домена, район покрытия. Соцсетей и sameAs нет — выдумывать ссылки нельзя.
+  const orgLd = JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: site.title,
+    description: site.tagline,
+    ...(site.live ? { url: `https://${site.host}/` } : {}),
+    areaServed: "Малмыжский район",
+  }).replace(/<\//g, "<\\/");
+
   return (
     <main className="page" id="main" tabIndex={-1}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: orgLd }} />
       <PageHead title={site.title} sub={site.tagline}>
         <Link href="/nomera">Справочник номеров</Link>
         {isChild && (
