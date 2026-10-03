@@ -39,6 +39,7 @@ export async function publishedOrgs(now: number = Date.now()): Promise<OrgRow[]>
     name: d.name,
     category: d.category,
     phones: (d.phones ?? []).map((p) => p.number),
+    address: d.address ?? null,
   }));
   cache = { at: now, rows };
   return rows;

@@ -16,7 +16,14 @@
 
 import type { EntryCategory } from "./sites.ts";
 
-export type OrgRow = { id: number; name: string; category: EntryCategory; phones: string[] };
+export type OrgRow = {
+  id: number;
+  name: string;
+  category: EntryCategory;
+  phones: string[];
+  /** Адрес для различения одноимённых в подсказках; `null` — не указан. */
+  address: string | null;
+};
 export type OrgHit = OrgRow & { score: number };
 
 export const ORG_HITS_MAX = 8;

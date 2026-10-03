@@ -90,6 +90,16 @@ ALTER TABLE "entries" DROP COLUMN IF EXISTS "hours";
 ALTER TABLE "entries" DROP COLUMN IF EXISTS "description";
 `;
 
+// Адрес организации — решение владельца 2026-10-03 (план обогащения, A0′).
+// Имя колонки — то, что построил бы Payload для текстового поля `address`.
+export const ENTRIES_ADDRESS_UP = `
+ALTER TABLE "entries" ADD COLUMN "address" varchar;
+`;
+
+export const ENTRIES_ADDRESS_DOWN = `
+ALTER TABLE "entries" DROP COLUMN IF EXISTS "address";
+`;
+
 // Предложенные правки к записям справочника — решение владельца 2026-09-10: «при
 // предложении нового номера чтобы была возможность выбрать организацию уже существующую».
 // Миграция 20260910_140000_entry_edits. Разбор — docs/DIRECTORY_EDITS.md.

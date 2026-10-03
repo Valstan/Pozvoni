@@ -177,6 +177,7 @@ export interface Entry {
       }[]
     | null;
   note?: string | null;
+  address?: string | null;
   /**
    * Правит владелец в кабинете; персонал — при необходимости.
    */
@@ -320,6 +321,7 @@ export interface EntriesSelect<T extends boolean = true> {
         id?: T;
       };
   note?: T;
+  address?: T;
   description?: T;
   hours?: T;
   owner?: T;

@@ -41,6 +41,7 @@ export default function SuggestForm({
   const [picked, setPicked] = useState<OrgHit | null>(null);
   const [category, setCategory] = useState(defaultCategory);
   const [phones, setPhones] = useState<string[]>([""]);
+  const [address, setAddress] = useState("");
   const [note, setNote] = useState("");
 
   // Номер, который у выбранной организации уже есть, отправлять незачем. Сверка по тому же
@@ -53,6 +54,7 @@ export default function SuggestForm({
     setPicked(null);
     setCategory(defaultCategory);
     setPhones([""]);
+    setAddress("");
     setNote("");
     setMessage("");
     setState("idle");
@@ -82,6 +84,8 @@ export default function SuggestForm({
           name: picked ? picked.name : name,
           category: picked ? picked.category : category,
           phones: fresh,
+          // Адрес — только новой организации: у выбранной карточка не трогается вовсе.
+          ...(!picked && address.trim() ? { address: address.trim() } : {}),
           note,
           website,
         }),
@@ -134,7 +138,10 @@ export default function SuggestForm({
                 value={name}
                 onChange={setName}
                 onPick={(org) => {
-                  if (org) setPicked(org);
+                  if (org) {
+                    setPicked(org);
+                    setAddress("");
+                  }
                 }}
                 category={category}
               />
@@ -189,6 +196,18 @@ export default function SuggestForm({
             )}
           </fieldset>
 
+          {/* Адрес — только новой организации: у выбранной карточка не трогается вовсе. */}
+          {!picked && (
+            <label>
+              Адрес (не обязательно)
+              <input
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                maxLength={200}
+                placeholder="ул. Ленина, 31"
+              />
+            </label>
+          )}
           <label>
             Примечание (цены, направления — не обязательно)
             <input

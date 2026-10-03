@@ -15,7 +15,13 @@ import type { EntryCategory } from "@/lib/sites";
 //     не увидел «Стрелу» и завёл вторую;
 //   • клавиатура по образцу WAI-ARIA combobox: стрелки, Enter, Esc; фокус не уходит из поля.
 
-export type OrgHit = { id: number; name: string; category: EntryCategory; phones: string[] };
+export type OrgHit = {
+  id: number;
+  name: string;
+  category: EntryCategory;
+  phones: string[];
+  address?: string | null;
+};
 
 export default function OrgPicker({
   value,
@@ -141,7 +147,10 @@ export default function OrgPicker({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => choose(i)}
             >
-              <span className="hit-label">{h.name}</span>
+              <span className="hit-label">
+                {h.name}
+                {h.address && <span className="hit-kind"> · {h.address}</span>}
+              </span>
               <span className="hit-kind">
                 {CATEGORY_LABELS[h.category]}
                 {h.phones.length > 0 && ` · ${h.phones.length} ном.`}

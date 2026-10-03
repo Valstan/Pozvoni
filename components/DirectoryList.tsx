@@ -37,6 +37,7 @@ function EntryCard({
         {entry.name}
         {stars && <span className="dir-rating"> {stars}</span>}
       </div>
+      {entry.address && <div className="dir-address">{entry.address}</div>}
       {entry.hours && <div className="dir-hours">{entry.hours}</div>}
       {/* Телефоны — клиентский компонент: после звонка спрашивает «дозвонились?» (спринт 5),
           и у каждого номера своя карма (решение владельца 2026-09-10). Map разворачивается

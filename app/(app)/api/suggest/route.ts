@@ -75,6 +75,7 @@ export async function POST(request: Request) {
 
   const name = clamp(body.name, 120);
   const note = clamp(body.note, 300);
+  const address = clamp(body.address, 200);
   const category: EntryCategory = CATEGORIES.find((c) => c === body.category) ?? "other";
 
   // Номеров до трёх за раз. Старое поле `phone` понимаем, чтобы вкладка с прежней формой,
@@ -157,6 +158,7 @@ export async function POST(request: Request) {
       name,
       category,
       phones: phones.map((number) => ({ number })),
+      ...(address ? { address } : {}),
       note: note || undefined,
       status: "draft", // жёстко: публикация только руками супер-админа
       source: rejectedTwin

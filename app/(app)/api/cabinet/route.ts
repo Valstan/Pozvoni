@@ -37,6 +37,7 @@ export async function POST(request: Request) {
       if (!Number.isInteger(id)) return bad("Нужен id карточки.");
       const patch: CardPatch = {
         description: typeof body.description === "string" ? body.description : undefined,
+        address: typeof body.address === "string" ? body.address : undefined,
         hours: typeof body.hours === "string" ? body.hours : undefined,
         prices: Array.isArray(body.prices)
           ? (body.prices as { label?: unknown; value?: unknown }[]).map((p) => ({
