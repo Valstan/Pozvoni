@@ -236,7 +236,72 @@ body {
 }
 
 .dir-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 600;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Избранное (B4): только localStorage устройства, без аккаунта и сервера.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.fav-star {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0.2rem 0.3rem;
+  font-size: 1.4rem;
+  line-height: 1;
+  color: var(--muted);
+  cursor: pointer;
+  flex: none;
+}
+
+.fav-star:hover,
+.fav-star:focus-visible {
+  color: var(--accent);
+  outline: none;
+}
+
+.fav-star.is-on {
+  color: var(--accent);
+}
+
+.favs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--line));
+  border-radius: 0.6rem;
+}
+
+.favs-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.favs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.favs-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+}
+
+.favs-name {
+  font-weight: 600;
+  min-width: 8rem;
 }
 
 .dir-phones {
