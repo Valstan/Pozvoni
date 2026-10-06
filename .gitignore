@@ -22,6 +22,10 @@ node_modules/
 dist/
 coverage/
 
+# Переговорная (hotline): присутствие сессии — эфемерно, не коммитить.
+# Ленты hotline/outbox/ — коммитятся обычным flow (видны через GitHub).
+hotline/presence.json
+
 # сгенерированные копии воркера MapLibre
 public/map/maplibre/
 tsconfig.tsbuildinfo
