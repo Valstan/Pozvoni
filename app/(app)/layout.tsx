@@ -15,11 +15,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: site.metaTitle, template: "%s" },
     description: site.tagline,
-    // Каждый домен матрёшки канонизирует сам себя: содержимое у них разное
-    // (такси-домен показывает только такси), дублей нет. Абсолютный canonical
-    // ставится только для заведённого домена — ссылка на несуществующий хост
-    // хуже, чем её отсутствие.
-    alternates: site.live ? { canonical: `https://${site.host}/` } : undefined,
+    // Canonical НЕ ставится здесь: общий корневой canonical отправлял /nomera и
+    // остальные страницы в дубликат главной и душил их индексацию (вскрытие
+    // 2026-10-07). Каждая индексируемая страница ставит свой через
+    // `siteCanonical` (см. главную, /nomera, /kontakty, /dannye).
     // Иконка для «добавить на домашний экран» у Apple: PNG 192 из public/icons
     // (сгенерированы из app/icon.svg через sharp). Манифест — app/manifest.ts.
     icons: { apple: "/icons/icon-192.png" },

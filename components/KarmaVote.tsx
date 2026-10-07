@@ -138,6 +138,7 @@ export default function KarmaVote({
         className={state === 1 ? "karma-btn karma-on" : "karma-btn"}
         aria-pressed={state === 1}
         aria-label={phone ? `Хвалю номер ${phone}` : "Хвалю"}
+        title={phone ? `Хвалю номер ${phone}` : "Хвалю службу: плюс — доволен, число — сумма голосов"}
         onClick={() => void send(1)}
       >
         +{up > 0 && <span className="karma-n">{up}</span>}
@@ -147,6 +148,7 @@ export default function KarmaVote({
         className={state === -1 ? "karma-btn karma-off karma-on" : "karma-btn karma-off"}
         aria-pressed={state === -1}
         aria-label={phone ? `Жалуюсь на номер ${phone}` : "Жалуюсь"}
+        title={phone ? `Жалуюсь на номер ${phone}` : "Жалуюсь на службу: минус — недоволен, число — сумма голосов"}
         onClick={() => void send(-1)}
       >
         −{down > 0 && <span className="karma-n">{down}</span>}

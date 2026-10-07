@@ -1,4 +1,5 @@
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import Link from "next/link";
 import { getPayload } from "payload";
 import config from "@payload-config";
@@ -13,6 +14,7 @@ import {
   ROOT_SITE,
   WHOLE_SERVICE_FALLBACK,
   resolveSite,
+  siteCanonical,
   siteCategories,
   siteHref,
 } from "@/lib/sites";
@@ -29,6 +31,18 @@ import { commentCounts, commentsReady } from "@/lib/comments";
 // ⚠️ С 2026-09-10 в базу ходит и КОРЕНЬ, чего раньше не было: витрине полок нужны
 // счётчики номеров. Полного списка номеров на корне по-прежнему нет.
 export const dynamic = "force-dynamic";
+
+// Главная канонизирует сама себя (`siteCanonical`): общий canonical из layout
+// убран — он отправлял все страницы в дубликат главной (вскрытие 2026-10-07).
+export async function generateMetadata(): Promise<Metadata> {
+  const site = resolveSite((await headers()).get("host"));
+  const canonical = siteCanonical(site, "/");
+  return {
+    title: site.metaTitle,
+    description: site.tagline,
+    ...(canonical ? { alternates: { canonical } } : null),
+  };
+}
 
 export default async function Home() {
   const site = resolveSite((await headers()).get("host"));
