@@ -29,7 +29,8 @@ async function onInit(payload: Payload): Promise<void> {
   }
 
   // Черновики номеров: досеиваем недостающее по названию. Публикация — только руками
-  // супер-админа после проверки (гейт владельца 2026-08-29).
+  // супер-админа после проверки (гейт владельца 2026-08-29); исключение — явный
+  // `status: "published"` у записи (решение владельца на партию 2026-10-07).
   //
   // Почему не «если таблица пуста». Первый сид 2026-08-29 так и работал — и любой пакет,
   // добавленный позже, не доехал бы ни на прод, ни на существующие локальные базы: таблица
@@ -41,9 +42,10 @@ async function onInit(payload: Payload): Promise<void> {
       where: { name: { equals: draft.name } },
     });
     if (found.totalDocs === 0) {
+      const { status, ...rest } = draft;
       await payload.create({
         collection: "entries",
-        data: { ...draft, status: "draft" },
+        data: { ...rest, status: status ?? "draft" },
       });
     }
   }

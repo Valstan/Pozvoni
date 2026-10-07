@@ -1,8 +1,13 @@
 // Черновик первичной базы номеров, собранный из открытых источников 2026-08-29.
 //
-// ⚠️ ВСЁ здесь заводится со статусом «На проверке» и наружу НЕ публикуется:
-// гейт владельца — каждый номер проверяется звонком или лично до публикации
-// (решение 2026-08-29). Источник записан у каждой записи — по нему проверять.
+// ⚠️ По умолчанию всё здесь заводится со статусом «На проверке» и наружу НЕ
+// публикуется: гейт владельца — каждый номер проверяется звонком или лично до
+// публикации (решение 2026-08-29). Исключение — записи с явным
+// `status: "published"` (решение владельца на партию 2026-10-07).
+// Источник записан у каждой записи — по нему проверять.
+//
+// ⚠️ Поле `note` ПУБЛИЧНО (карточка справочника): никаких «сверить/сомневаюсь»
+// в нём у публикуемых записей — сомнения живут в PR и переписке, а не в карточке.
 //
 // Сеется идемпотентно: запись с таким же названием повторно не создаётся.
 //
@@ -19,6 +24,13 @@ type DraftEntry = {
   address?: string;
   hours?: string;
   source: string;
+  /**
+   * Статус, с которым запись создаётся при досеве. По умолчанию `draft` (гейт
+   * владельца 2026-08-29: публикация только после проверки звонком).
+   * `published` ставит только явное решение владельца на конкретную партию —
+   * прецедент: партия 2026-10-07 («ищем») опубликована без прозвона.
+   */
+  status?: "draft" | "published";
 };
 
 export const directoryDraft: DraftEntry[] = [
@@ -467,5 +479,202 @@ export const directoryDraft: DraftEntry[] = [
     hours: "пн–пт 8:00–17:00",
     note: "Отделение 8612/0412; улицу и дом уточнить при проверке",
     source: "OSM-вырезка проекта 2026-08-29",
+  },
+  {
+    name: "Администрация Большекитякского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-22-60" }],
+    address: "с. Большой Китяк, ул. Николая Тишина, 9",
+    source:
+      "bolshekityakskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Каксинвайского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-51-16" }],
+    address: "с. Каксинвай, ул. Школьная, 33",
+    source:
+      "kaksinvajskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Мелетского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 3-01-15" }],
+    address: "д. Мелеть, ул. Советская, 5",
+    source:
+      "meletskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Новосмаильского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-11-81" }, { number: "+7 83347 6-11-44" }],
+    address: "с. Новая Смаиль, ул. Свободы, 8",
+    source:
+      "сводная таблица района 25.08.2026 + novosmailskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Плотбищенского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-93-34" }],
+    address: "п. Плотбище, ул. Лесная, 16",
+    source: "сводная таблица района 25.08.2026 + vk.com/club221745182 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Преображенского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-62-19" }],
+    address: "д. Преображенка, ул. Шахтёрская, 2",
+    source:
+      "preobrazhenskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Ральниковского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 3-72-40" }],
+    address: "с. Ральники, ул. Центральная, 2А",
+    source:
+      "ralnikovskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Рожкинского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 3-12-31" }],
+    address: "с. Рожки, ул. Октябрьская, 118",
+    source:
+      "rozhkinskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Староирюкского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-01-22" }],
+    address: "с. Старый Ирюк, ул. Садовая, 2-а",
+    source:
+      "staroiryukskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Старотушкинского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 6-72-89" }],
+    address: "с. Старая Тушка, ул. Советская, 11",
+    source:
+      "starotushkinskoe-r43.gosweb.gosuslugi.ru/glavnoe/kontakty + сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "Администрация Тат-Верх-Гоньбинского сельского поселения",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 3-82-19" }],
+    address: "с. Тат-Верх-Гоньба",
+    source: "сводная таблица района 25.08.2026 — сбор 2026-10-07",
+  },
+  {
+    name: "ОМВД России «Малмыжский»",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 2-22-59" }, { number: "+7 83347 3-60-33" }],
+    source: "malmigcrb.medkirov.ru — сбор 2026-10-07",
+  },
+  {
+    name: "Малмыжский районный суд",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 2-84-84" }],
+    address: "ул. Комсомольская, 67",
+    source: "malmizhsky.kir.sudrf.ru (ГАС Правосудие) — сбор 2026-10-07",
+  },
+  {
+    name: "Прокуратура Малмыжского района",
+    category: "gos",
+    status: "published",
+    phones: [
+      { number: "+7 83347 2-15-95" },
+      { number: "+7 83347 2-15-44" },
+      { number: "+7 83347 2-15-81" },
+    ],
+    source: "malmigcrb.medkirov.ru + epp.genproc.gov.ru/web/proc_43 — сбор 2026-10-07",
+  },
+  {
+    name: "Военный комиссариат (Вятские Поляны, Вятскополянский и Малмыжский районы)",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83334 6-28-67" }, { number: "+7 83334 6-10-87" }],
+    address: "г. Вятские Поляны, ул. Ленина, 56",
+    note: "Отдельного военкомата в Малмыже нет — район обслуживается из Вятских Полян",
+    source: "kirovreg.ru/military_com (таблица от 04.09.2026) — сбор 2026-10-07",
+  },
+  {
+    name: "Отделение ГИБДД ОМВД России «Малмыжский»",
+    category: "gos",
+    status: "published",
+    phones: [{ number: "+7 83347 2-22-59" }, { number: "+7 83347 2-64-08" }],
+    source: "гибдд.рф/r/43 — сбор 2026-10-07",
+  },
+  {
+    name: "Малмыжское райпо (офис)",
+    category: "other",
+    status: "published",
+    phones: [{ number: "+7 83347 2-29-49" }],
+    address: "ул. К. Маркса, 80",
+    source: "kirovops.ru/kontakty — сбор 2026-10-07",
+  },
+  {
+    name: "Магазин райпо (с. Калинино)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 83347 3-61-40" }],
+    address: "с. Калинино",
+    source: "russiacompany.ru — сбор 2026-10-07",
+  },
+  {
+    name: "Аптека №40 (Малмыж)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 83347 2-20-68" }],
+    address: "ул. Комсомольская, 48",
+    note: "Дубль сети: 8 8332 254-640",
+    source: "apteka40kirov.ru (раздел «Малмыжский район») — сбор 2026-10-07",
+  },
+  {
+    name: "Аптека «Апрель» (Малмыж)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 918 200-90-01" }],
+    address: "ул. Карла Маркса, 6",
+    hours: "ежедневно 8:00–20:00",
+    source: "apteka-april.ru/apteki/115944 + zoon + lek-info — сбор 2026-10-07",
+  },
+  {
+    name: "Аптечный пункт №40 (с. Рожки)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 8332 25-47-36" }],
+    address: "с. Рожки, ул. Октябрьская, 96",
+    source: "apteka40kirov.ru — сбор 2026-10-07",
+  },
+  {
+    name: "Аптечный пункт №40 (с. Константиновка)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 8332 25-46-22" }],
+    address: "с. Константиновка, ул. Ленина, 2а",
+    source: "apteka40kirov.ru — сбор 2026-10-07",
+  },
+  {
+    name: "Аптечный пункт №40 (Малмыж)",
+    category: "shop",
+    status: "published",
+    phones: [{ number: "+7 8332 25-46-85" }],
+    address: "ул. Свердлова, 10",
+    source: "apteka40kirov.ru — сбор 2026-10-07",
   },
 ];
