@@ -1,5 +1,6 @@
 import PageHead from "@/components/PageHead";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { ACCOUNT_RETENTION_MONTHS } from "@/lib/account-retention";
 import { METRIKA_ID } from "@/lib/metrika";
@@ -8,7 +9,7 @@ import { CLAIM_GRACE_DAYS, REQUEST_RETENTION_DAYS } from "@/lib/market";
 import { RATING_WINDOW_DAYS } from "@/lib/ratings";
 import { COMMENT_RETENTION_DAYS, HIDDEN_RETENTION_DAYS } from "@/lib/comments";
 import { currentUser } from "@/lib/session";
-import { ECOSYSTEM_SERVICES_URL } from "@/lib/sites";
+import { ECOSYSTEM_SERVICES_URL, resolveSite, siteCanonical } from "@/lib/sites";
 
 // Уведомление о данных — первая бумага этапа A (решение владельца 2026-09-03, разбор brain
 // 2026-09-02). Появилось не «на всякий случай»: с 2026-09-02 вход через единый вход
@@ -21,10 +22,16 @@ import { ECOSYSTEM_SERVICES_URL } from "@/lib/sites";
 // спринт 7, он отложен владельцем. Здесь только правда о том, что уже работает, и каждая
 // строка проверяема по коду, ссылки на который стоят в docs/AUTH_ESA.md.
 
-export const metadata: Metadata = {
-  title: "Ваши данные — ПОЗВОНИ",
-  description:
-    "Что ПОЗВОНИ хранит о посетителе, зачем, сколько и что не собирает вовсе.",
+export async function generateMetadata(): Promise<Metadata> {
+  // Canonical — свой адрес, а не корень (вскрытие 2026-10-07).
+  const site = resolveSite((await headers()).get("host"));
+  const canonical = siteCanonical(site, "/dannye");
+  return {
+    title: "Ваши данные — ПОЗВОНИ",
+    description:
+      "Что ПОЗВОНИ хранит о посетителе, зачем, сколько и что не собирает вовсе.",
+    ...(canonical ? { alternates: { canonical } } : null),
+  };
 };
 
 const ESA_HREF = "https://вход.вмалмыже.рф";

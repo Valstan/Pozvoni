@@ -271,7 +271,23 @@ export function siteHref(from: Site, to: Site, path: string, fallback: string): 
   return `https://${to.host}${path}`;
 }
 
-/** Категории, которые показывает домен. Для корня — все. */
+/**
+ * Канонический адрес страницы на этом лице матрёшки.
+ *
+ * Каждое лицо канонизирует само себя ПОСТРАНИЧНО: содержимое у лиц разное,
+ * дублей нет. Корневой URL в canonical ставится только на главной — общий
+ * корневой canonical из layout отправлял /nomera и остальные страницы
+ * в дубликат главной и душил их индексацию (вскрытие 2026-10-07).
+ * Незаведённому домену canonical не ставится вовсе: ссылка на несуществующий
+ * хост хуже, чем её отсутствие.
+ */
+export function siteCanonical(site: Site, path: string): string | undefined {
+  if (!site.live) return undefined;
+  return `https://${site.host}${path}`;
+}
+
+/**
+ * Категории, которые показывает домен. Для корня — все. */
 export function siteCategories(site: Site): EntryCategory[] | null {
   return site.kind === "category" ? (site.categories ?? null) : null;
 }

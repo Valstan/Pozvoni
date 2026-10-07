@@ -53,13 +53,16 @@ export interface Shelf {
  */
 export function shelves(): Shelf[] {
   const byDomain = SITES.filter((s) => s.kind === "category" && s.categories?.length).map(
-    (s): Shelf => ({
-      key: s.id,
-      title: shelfTitle(s),
-      hint: s.categories!.map((c) => CATEGORY_LABELS[c].toLowerCase()).join(", "),
-      categories: s.categories!,
-      site: s,
-    }),
+    (s): Shelf => {
+      const title = shelfTitle(s);
+      // Подсказка не повторяет название: иначе плашка читается «Такси такси»
+      // (вскрытие 2026-10-07).
+      const hint = s
+        .categories!.map((c) => CATEGORY_LABELS[c].toLowerCase())
+        .filter((h) => h !== title.toLowerCase())
+        .join(", ");
+      return { key: s.id, title, hint, categories: s.categories!, site: s };
+    },
   );
 
   const covered = new Set(byDomain.flatMap((s) => s.categories));

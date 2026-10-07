@@ -13,6 +13,7 @@ import {
   WHOLE_SERVICE_FALLBACK,
   resolveScope,
   resolveSite,
+  siteCanonical,
   siteHref,
   type EntryCategory,
 } from "@/lib/sites";
@@ -51,9 +52,14 @@ export async function generateMetadata({
       ? `${scopeTitle} — ${site.metaTitle}`
       : `Справочник номеров — ${site.metaTitle}`;
 
+  // Canonical — всегда чистый /nomera без ?scope=/?cat=/?q=: варианты адреса —
+  // тот же список другим срезом, в индекс им не надо (вскрытие 2026-10-07).
+  const canonical = siteCanonical(site, "/nomera");
+
   return {
     title,
     description: site.tagline,
+    ...(canonical ? { alternates: { canonical } } : null),
     openGraph: {
       title,
       description: site.tagline,
@@ -212,7 +218,8 @@ export default async function NomeraPage({
           ? "Весь справочник района. "
           : `Полка: ${categories.map((c) => CATEGORY_LABELS[c]).join(", ")}. `}
         Нажмите на номер — телефон наберёт сам. Цены справочные, не оферта: уточняйте
-        при звонке.
+        при звонке. Плюс и минус у номера и службы — оценка посетителей, число рядом —
+        сумма голосов.
       </p>
 
       {/* Поиск и чипсы категорий (B1): обычная GET-форма и ссылки — без JS. Форма шлёт

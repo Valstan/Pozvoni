@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import PageHead from "@/components/PageHead";
+import { resolveSite, siteCanonical } from "@/lib/sites";
 
 // Страница «О нас / Контакты» — мандат brain 2026-10-01: владелец согласился 01.10
 // публиковать свои персональные данные, снят последний блокер (страница висела с 09.10).
@@ -14,11 +16,18 @@ import PageHead from "@/components/PageHead";
 // Телефон и почта — публичные каналы связи, а не секреты: серверов у сайта нет, формы
 // отправлять некуда, поэтому лид приходит только по прямому каналу.
 
-export const metadata: Metadata = {
-  title: "О нас / Контакты — ПОЗВОНИ",
-  description:
-    "Кто делает „ПОЗВОНИ“ и как с ним связаться: телефон, почта, Telegram и GitHub. Публичная страница — сюда приходят требования об удалении данных.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // Canonical — свой адрес, а не корень: общий корневой canonical из layout
+  // отправлял страницу в дубликат главной (вскрытие 2026-10-07).
+  const site = resolveSite((await headers()).get("host"));
+  const canonical = siteCanonical(site, "/kontakty");
+  return {
+    title: "О нас / Контакты — ПОЗВОНИ",
+    description:
+      "Кто делает „ПОЗВОНИ“ и как с ним связаться: телефон, почта, Telegram и GitHub. Публичная страница — сюда приходят требования об удалении данных.",
+    ...(canonical ? { alternates: { canonical } } : null),
+  };
+}
 
 interface ContactField {
   label: string;
