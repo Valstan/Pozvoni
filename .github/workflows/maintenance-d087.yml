@@ -1,0 +1,92 @@
+name: maintenance-d087
+
+# Обслуживание бокса — окно D-087 (мандат brain 2026-10-07).
+# Только ручной запуск: ребут бокса и правка timezone PostgreSQL.
+#
+# Все адреса, порты и пути приходят СЕКРЕТАМИ, не через vars: значения vars
+# печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
+# D-038). Здесь нет ни одного echo с фактами о сервере.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: maintenance-d087
+  cancel-in-progress: false
+
+jobs:
+  maintenance-d087:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Предребутное обслуживание (detect-virt + timezone)
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой:
+        # текст внутри команды прошёл бы четыре парсера подряд (мандат D-046).
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s < deploy/remote-maintenance-d087.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
+
+      - name: Ребут бокса
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+        # Обрыв соединения здесь — штатное следствие ребута, а не поломка:
+        # код 255 после отданной команды глушим, иначе шаг покраснеет зря.
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" sudo reboot 2>/dev/null
+          rc=$?
+          set -e
+          echo "команда ребута отдана (код ssh $rc — обрыв соединения штатный)"
+          exit 0
+
+      - name: Ожидание подъёма бокса
+        run: |
+          echo "ждём 90 секунд после ребута (ядро + postgres + служба)..."
+          sleep 90
+
+      - name: Приёмка после ребута
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          APP_PORT: ${{ secrets.DEPLOY_APP_PORT }}
+          SMOKE_URL: ${{ secrets.DEPLOY_SMOKE_URL }}
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$APP_PORT" "$SMOKE_URL" < deploy/remote-acceptance-d087.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
