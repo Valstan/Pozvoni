@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Опись бокса под переезд D-117 (мандат brain 2026-10-08-sabantuy-inventory-measure).
+# Версия 2: привязка не по логинам, а по подкаталогам дома.
 #
-# Только чтение: systemctl show/list-units/list-timers, df, du, ps, ss,
-# SELECT по системным каталогам PostgreSQL, crontab -l. Ни записей,
-# ни рестартов, кластер PostgreSQL не трогаем (ALTER нет вовсе).
-# Выполняется НА СЕРВЕРЕ через ssh на stdin — как остальные удалённые
-# скрипты (мандат D-046).
+# Урок прогона 1 (14:24 UTC 08.10): в /home ОДИН дом, а юнитов приложений три —
+# жильцы делят одного системного пользователя, и метка по логину слепила всех
+# в «наш». Здесь ключ жильца — первый подкаталог дома из WorkingDirectory /
+# ExecStart / cwd юнита (наш — из окружения нашей службы). Чужие имена наружу
+# не выходят: печатаются только метки (стабильны между прогонами) и числа.
+#
+# Только чтение: systemctl show/list-units/list-timers, df, du, stat, ps, ss,
+# SELECT по системным каталогам PostgreSQL, crontab -l, чтение cgroupfs
+# (memory.peak/current, pids.current — учёт systemd может молчать, как в
+# прогоне 1, а cgroupfs цифры отдаёт). Ни записей, ни рестартов.
+# Выполняется НА СЕРВЕРЕ через ssh на stdin (мандат D-046).
 #
 # Recon-безопасность (AGENTS.md, D-038: репозиторий и логи прогонов публичны).
-# На боксе четверо жильцов (мы + трое соседей); имена юнитов, логины, пути,
-# порты, имена баз — чужие данные и recon-поверхность. Поэтому скрипт
-# печатает ТОЛЬКО обезличенные агрегаты: имена/пути/порты превращаются
-# в метки на месте замера и наружу не выходят. Метки стабильны между
-# прогонами (порядок — по хэшу логина), «наш» — всегда мы.
-# Проверка перед отправкой письма — тем же grep-аудитом, что закрыл #223.
+# Имена юнитов/таймеров (кроме штатных), логины, подкаталоги, пути, порты,
+# имена баз и ролей — чужие данные: всё превращается в метки на месте замера.
+# Проверка перед письмом — тем же grep-аудитом, что закрыл #223.
 #
 # Аргументы: <имя нашей службы> (значением секрета; в лог попадает только
 # замена, как в remote-logs.sh).
@@ -26,7 +30,7 @@ set -euo pipefail
 
 SVC="${1:?не задана наша служба}"
 
-# Короткая необратимая метка для внутренней сортировки (наружу не выходит).
+# Короткая необратимая метка (детерминирована, стабильна между прогонами).
 tag() { printf '%s' "$1" | sha256sum | cut -c1-6; }
 
 SUDO=""
@@ -44,21 +48,24 @@ echo "=== 1. диск (устройства скрыты, только точк�
 df -h -x tmpfs -x devtmpfs -x overlay 2>/dev/null \
   | awk 'NR==1 {print "точка размер занято доступно исп%"} NR>1 {print $NF, $(NF-4), $(NF-3), $(NF-2), $(NF-1)}' \
   || echo "df недоступен"
+df -i -x tmpfs -x devtmpfs -x overlay 2>/dev/null \
+  | awk 'NR==1 {print "точка инодов занято свободно исп%"} NR>1 {print $NF, $(NF-4), $(NF-3), $(NF-2), $(NF-1)}' \
+  || echo "df -i недоступен"
 
-# --- жильцы: логины из /home, метки стабильны между прогонами ---
+# --- жильцы: дома, подкаталоги, ключи, метки ---
 mapfile -t LOGINS < <(ls -A /home 2>/dev/null || true)
-echo "=== 2. жильцы ==="
+echo "=== 2. жильцы (ключи — подкаталоги домов, метки стабильны) ==="
 echo "домов в /home: ${#LOGINS[@]}"
 
-# Свой логин: из окружения/путей НАШЕГО юнита (чужое не читаем).
-OUR_LOGIN=""
+# Наш логин и наш подкаталог — из окружения НАШЕГО юнита (чужое не читаем).
+OUR_LOGIN=""; OUR_SUB=""
 SVC_ENV=$(systemctl show "$SVC" -p User,WorkingDirectory,ExecStart --value 2>/dev/null || true)
-if [[ "$SVC_ENV" =~ /home/([^/[:space:]\";]+) ]]; then OUR_LOGIN="${BASH_REMATCH[1]}"; fi
+if [[ "$SVC_ENV" =~ /home/([^/[:space:]\";]+)(/([^/[:space:]\";]+))? ]]; then
+  OUR_LOGIN="${BASH_REMATCH[1]}"; OUR_SUB="${BASH_REMATCH[3]:-}"
+fi
 if [ -z "$OUR_LOGIN" ]; then
   SVC_USER=$(systemctl show "$SVC" -p User --value 2>/dev/null || true)
-  if [ -n "$SVC_USER" ]; then
-    for l in ${LOGINS[@]+"${LOGINS[@]}"}; do [ "$l" = "$SVC_USER" ] && OUR_LOGIN="$l" && break; done
-  fi
+  for l in ${LOGINS[@]+"${LOGINS[@]}"}; do [ "$l" = "$SVC_USER" ] && OUR_LOGIN="$l" && break; done
 fi
 
 is_login() {
@@ -68,43 +75,80 @@ is_login() {
   return 1
 }
 
-declare -A LBL
-OTHERS=()
+# Ключ жильца: "логин/подкаталог" либо "логин" (юнит прямо в доме).
+# SUBKEY["дом-подметка"] = ключ; KEYLBL[ключ] = метка; SUBNAMES — имена для
+# внутреннего сопоставления владельцев баз (наружу не выходят).
+declare -A SUBKEY KEYLBL
+SUBNAMES=()
+OUR_KEY=""
 for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-  if [ -n "$OUR_LOGIN" ] && [ "$l" = "$OUR_LOGIN" ]; then LBL[$l]="наш"; else OTHERS+=("$l"); fi
+  while IFS= read -r -d '' sub; do
+    base=$(basename "$sub")
+    SUBNAMES+=("$base")
+    key="$l/$base"
+    stag="под-$(tag "$sub")"
+    SUBKEY[$stag]="$key"
+    if [ -n "$OUR_LOGIN" ] && [ "$l" = "$OUR_LOGIN" ] && [ -n "$OUR_SUB" ] && [ "$base" = "$OUR_SUB" ]; then
+      OUR_KEY="$key"; KEYLBL[$key]="наш"
+    fi
+  done < <($SUDO find "/home/$l" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true)
+  if [ -n "$OUR_LOGIN" ] && [ "$l" = "$OUR_LOGIN" ] && [ -z "$OUR_KEY" ]; then
+    OUR_KEY="$l"; KEYLBL[$l]="наш"
+  fi
+done
+# Остальные ключи — соседи по хэшу ключа (стабильно).
+OTHERS=()
+for stag in "${!SUBKEY[@]}"; do
+  [ "${SUBKEY[$stag]}" = "$OUR_KEY" ] || OTHERS+=("${SUBKEY[$stag]}")
+done
+# Плюс ключ «логин целиком» для юнитов, живущих прямо в доме.
+for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
+  if [ "$l" != "$OUR_KEY" ] && [ -z "${KEYLBL[$l]:-}" ]; then OTHERS+=("$l"); fi
 done
 SORTED=()
 if [ "${#OTHERS[@]}" -gt 0 ]; then
   while IFS= read -r line; do SORTED+=("$line"); done < <(
-    for l in "${OTHERS[@]}"; do printf '%s\t%s\n' "$(tag "$l")" "$l"; done | LC_ALL=C sort | cut -f2-
+    for k in "${OTHERS[@]}"; do printf '%s\t%s\n' "$(tag "$k")" "$k"; done | LC_ALL=C sort | cut -f2-
   )
 fi
 i=0
-for l in ${SORTED[@]+"${SORTED[@]}"}; do i=$((i + 1)); LBL[$l]="сосед-$i"; done
-if [ -z "$OUR_LOGIN" ]; then echo "NOTE: свой логин не определён — строка «наш» ниже только по юниту"; fi
-echo "метки: наш + соседи по хэшу логина (стабильны)"
+for k in ${SORTED[@]+"${SORTED[@]}"}; do i=$((i + 1)); KEYLBL[$k]="сосед-$i"; done
+[ -n "$OUR_KEY" ] || echo "NOTE: свой ключ не определён — строка «наш» ниже только по имени юнита"
+echo "метки: наш + соседи по хэшу ключа (стабильны); подкаталоги — под-<хэш>"
 
-# Чей юнит: наш (по имени из секрета), чужой (по User/cwd/ExecStart через /home),
-# иначе системный. Имена наружу не выходят — только метка.
+# Чей юнит: наш (имя из секрета или наш ключ), чужой (дом/подкаталог из
+# WorkingDirectory/ExecStart/cwd/User), иначе «без привязки».
+declare -A KEYN
 who_of_unit() {
-  local u="$1" user mp cwd l env
-  [ "$u" = "$SVC" ] && { printf 'наш'; return; }
-  user=$(systemctl show "$u" -p User --value 2>/dev/null || true)
-  if is_login "$user"; then printf '%s' "${LBL[$user]}"; return; fi
+  local u="$1" user mp cwd l env sub key
+  if [ "$u" = "$SVC" ]; then
+    if [ -n "$OUR_KEY" ]; then printf '%s' "${KEYLBL[$OUR_KEY]}"; else printf 'наш'; fi
+    return
+  fi
   env=$(systemctl show "$u" -p WorkingDirectory,ExecStart --value 2>/dev/null || true)
-  if [[ "$env" =~ /home/([^/[:space:]\";]+) ]]; then
-    l="${BASH_REMATCH[1]}"
-    if is_login "$l"; then printf '%s' "${LBL[$l]}"; return; fi
+  if [[ "$env" =~ /home/([^/[:space:]\";]+)(/([^/[:space:]\";]+))? ]]; then
+    l="${BASH_REMATCH[1]}"; sub="${BASH_REMATCH[3]:-}"
+    if is_login "$l"; then
+      if [ -n "$sub" ]; then key="$l/$sub"; else key="$l"; fi
+      if [ -n "${KEYLBL[$key]:-}" ]; then printf '%s' "${KEYLBL[$key]}"; return; fi
+    fi
+  fi
+  user=$(systemctl show "$u" -p User --value 2>/dev/null || true)
+  if is_login "$user"; then
+    if [ -n "${KEYLBL[$user]:-}" ]; then printf '%s' "${KEYLBL[$user]}"; return; fi
   fi
   mp=$(systemctl show "$u" -p MainPID --value 2>/dev/null || true)
   if [ -n "$mp" ] && [ "$mp" != "0" ]; then
     cwd=$(readlink "/proc/$mp/cwd" 2>/dev/null || true)
-    if [[ "$cwd" =~ ^/home/([^/]+) ]]; then
-      l="${BASH_REMATCH[1]}"
-      if is_login "$l"; then printf '%s' "${LBL[$l]}"; return; fi
+    if [[ "$cwd" =~ ^/home/([^/]+)(/([^/]+))? ]]; then
+      l="${BASH_REMATCH[1]}"; sub="${BASH_REMATCH[3]:-}"
+      if is_login "$l"; then
+        if [ -n "$sub" ]; then key="$l/$sub"; else key="$l"; fi
+        if [ -n "${KEYLBL[$key]:-}" ]; then printf '%s' "${KEYLBL[$key]}"; return; fi
+      fi
     fi
   fi
-  printf 'системный'
+  printf 'без-привязки'
 }
 
 unit_of_pid() {
@@ -112,70 +156,104 @@ unit_of_pid() {
   tr '\0' '\n' < "/proc/$p/cgroup" 2>/dev/null | grep -oE '[A-Za-z0-9_@.:-]+\.service' | tail -1 || true
 }
 
-echo "=== 3. юниты: пик RSS, лимиты, рестарты (байты, даты — имён нет) ==="
-SYS_UNITS=0
+# Память юнита из cgroupfs (systemd-учёт может молчать — cgroupfs отдаёт).
+cgmem() {
+  local u="$1" base f v
+  for base in "/sys/fs/cgroup/system.slice/$u" "/sys/fs/cgroup/memory/system.slice/$u"; do
+    for f in memory.peak memory.current memory.max pids.current memory.max_usage_in_bytes memory.usage_in_bytes; do
+      if [ -r "$base/$f" ]; then
+        v=$($SUDO cat "$base/$f" 2>/dev/null || true)
+        [ -n "$v" ] && echo "cgroup-$f: $v"
+      fi
+    done
+  done
+}
+
+echo "=== 3. юниты: пик RSS, лимиты, рестарты, cgroup (байты, даты — имён нет) ==="
+SYS_UNITS=0; NOBIND=0
+declare -A UNITWHO
 for u in $(systemctl list-units --type=service --state=running --no-legend --no-pager --plain 2>/dev/null | awk '{print $1}'); do
   who=$(who_of_unit "$u")
+  UNITWHO[$u]="$who"
   if [ "$who" = "системный" ]; then SYS_UNITS=$((SYS_UNITS + 1)); continue; fi
+  if [ "$who" = "без-привязки" ]; then NOBIND=$((NOBIND + 1)); who="без-привязки-№$NOBIND"; UNITWHO[$u]="$who"; fi
+  # Счётчик юнитов на ключ — для раздела 8 и поиска припаркованного.
+  for k in "${!KEYLBL[@]}"; do
+    if [ "${KEYLBL[$k]}" = "$who" ]; then KEYN[$k]=$(( ${KEYN[$k]:-0} + 1 )); fi
+  done
   echo "--- юнит: $who ---"
-  systemctl show "$u" 2>/dev/null | grep -E '^(MemoryPeak|MemoryMax|MemoryHigh|MemoryCurrent|TasksCurrent|NRestarts|ActiveEnterTimestamp)=' || echo "свойства недоступны"
+  systemctl show "$u" 2>/dev/null | grep -E '^(MemoryPeak|MemoryMax|MemoryHigh|MemoryCurrent|TasksCurrent|NRestarts|ActiveEnterTimestamp)=' || echo "свойства systemd недоступны"
+  cgmem "$u" || true
 done
 echo "пропущено системных юнитов: $SYS_UNITS"
 
-echo "=== 4. процессы по жильцам (counts; user-юниты без системного юнита видны здесь) ==="
+echo "=== 4. процессы (по юнитам из cgroup + итог по логинам) ==="
+declare -A PROCS
+for u in "${!UNITWHO[@]}"; do
+  who="${UNITWHO[$u]}"
+  [ "$who" = "системный" ] && continue
+  for base in "/sys/fs/cgroup/system.slice/$u" "/sys/fs/cgroup/memory/system.slice/$u"; do
+    if [ -r "$base/pids.current" ]; then
+      v=$($SUDO cat "$base/pids.current" 2>/dev/null || true)
+      if [ -n "$v" ]; then PROCS[$who]=$(( ${PROCS[$who]:-0} + v )); break; fi
+    fi
+  done
+done
+for k in "${!KEYLBL[@]}"; do echo "процессов у ${KEYLBL[$k]} (cgroup): ${PROCS[${KEYLBL[$k]}]:-н/д}"; done
+[ "$NOBIND" -gt 0 ] && echo "процессов у без-привязки (cgroup): ${PROCS[без-привязки-№1]:-н/д}"
 for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-  lbl="${LBL[$l]:-неизвестный}"
-  echo "$lbl процессов: $(ps -o user= 2>/dev/null | awk -v u="$l" '$1==u' | wc -l)"
+  echo "процессов на логин (итог, все жильцы дома): $(ps -o user= 2>/dev/null | awk -v u="$l" '$1==u' | wc -l)"
 done
 
 echo "=== 5. слушающие сокеты (только числа — сами порты наружу не выходят) ==="
-declare -A SOCK_SEEN
-TOT=0; OURS=0; SYS_SOCK=0
-declare -A PERLBL
+declare -A SOCK_SEEN PERLBL
+TOT=0; SYS_SOCK=0
 while IFS= read -r line; do
   [ -n "$line" ] || continue
   addr=$(printf '%s' "$line" | awk '{print $5}')
   pids=$(printf '%s' "$line" | grep -o 'pid=[0-9]\+' | cut -d= -f2 || true)
-  [ -n "$pids" ] || { key="системный|$addr"; }
   if [ -z "$pids" ]; then
+    key="системный|$addr"
     if [ -z "${SOCK_SEEN[$key]:-}" ]; then SOCK_SEEN[$key]=1; SYS_SOCK=$((SYS_SOCK + 1)); TOT=$((TOT + 1)); fi
     continue
   fi
   for p in $pids; do
     u=$(unit_of_pid "$p")
-    if [ -n "$u" ]; then who=$(who_of_unit "$u"); else who="системный"; fi
+    if [ -n "$u" ] && [ -n "${UNITWHO[$u]:-}" ]; then who="${UNITWHO[$u]}"; else who="системный"; fi
     key="$who|$addr"
     if [ -z "${SOCK_SEEN[$key]:-}" ]; then
       SOCK_SEEN[$key]=1; TOT=$((TOT + 1))
-      if [ "$who" = "наш" ]; then OURS=$((OURS + 1));
-      elif [ "$who" = "системный" ]; then SYS_SOCK=$((SYS_SOCK + 1));
+      if [ "$who" = "системный" ]; then SYS_SOCK=$((SYS_SOCK + 1));
       else PERLBL[$who]=$(( ${PERLBL[$who]:-0} + 1 )); fi
     fi
   done
 done < <({ ss -tlnpH 2>/dev/null || true; ss -ulnpH 2>/dev/null || true; })
 echo "уникальных слушающих сокетов: всего $TOT (один порт на разных адресах считается дважды — оценка сверху)"
-echo "из них наши: $OURS; системные/без процесса: $SYS_SOCK"
-for l in ${SORTED[@]+"${SORTED[@]}"}; do echo "из них ${LBL[$l]}: ${PERLBL[${LBL[$l]}]:-0}"; done
+echo "из них системные/без процесса: $SYS_SOCK"
+for k in "${!KEYLBL[@]}"; do echo "из них ${KEYLBL[$k]}: ${PERLBL[${KEYLBL[$k]}]:-0}"; done
+for n in $(seq 1 "$NOBIND"); do echo "из них без-привязки-№$n: ${PERLBL[без-привязки-№$n]:-0}"; done
 
-echo "=== 6. таймеры (имена — только штатные, остальные хэшем) ==="
+echo "=== 6. таймеры (штатные — именем, остальные хэшем; колонка ACTIVATES тоже чистится) ==="
 systemctl list-timers --no-legend --no-pager --plain 2>/dev/null | while IFS= read -r line; do
   [ -n "$line" ] || continue
-  unit=$(printf '%s' "$line" | awk '{print $(NF-1)}')
-  sched=$(printf '%s' "$line" | sed 's/ [^ ]* [^ ]*$//')
-  base=${unit%.timer}
-  case "$base" in
-    apt-daily|apt-daily-upgrade|logrotate|fstrim|motd-news|dpkg-db-backup|man-db|systemd-tmpfiles-clean) shown="$unit" ;;
-    *) shown="таймер-<$(tag "$unit")>" ;;
-  esac
-  echo "$shown :: $sched"
+  clean="$line"
+  for tok in $(printf '%s' "$line" | grep -oE '[A-Za-z0-9_@.:-]+\.(timer|service)' || true); do
+    base=${tok%.*}
+    case "$base" in
+      apt-daily|apt-daily-upgrade|logrotate|fstrim|motd-news|dpkg-db-backup|man-db|systemd-tmpfiles-clean|certbot|e2scrub_all|ct-preset-deb) rep="$tok" ;;
+      *) rep="скрыт-<$(tag "$tok")>" ;;
+    esac
+    esc=${tok//./\\.}
+    clean=$(printf '%s' "$clean" | sed "s/$esc/$rep/g")
+  done
+  echo "$clean"
 done
 
 echo "=== 7. кроны (расписания + argv0; значений env нет) ==="
 for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-  lbl="${LBL[$l]:-неизвестный}"
   cron=$($SUDO crontab -u "$l" -l 2>/dev/null || true)
-  if [ -z "$cron" ]; then echo "крон $lbl: недоступен или пуст"; continue; fi
-  echo "крон $lbl: строк $(printf '%s' "$cron" | grep -cv '^[[:space:]]*\(#\|$\)')"
+  if [ -z "$cron" ]; then echo "крон дома: недоступен или пуст"; continue; fi
+  echo "крон дома: строк $(printf '%s' "$cron" | grep -cv '^[[:space:]]*\(#\|$\)')"
   printf '%s' "$cron" | grep -v '^[[:space:]]*\(#\|$\)' | while IFS= read -r job; do
     if [[ "$job" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then echo "  env-строка (значение скрыто)"; continue; fi
     sched=$(printf '%s' "$job" | awk '{print $1, $2, $3, $4, $5}')
@@ -185,39 +263,86 @@ for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
 done
 echo "файлов в /etc/cron.d: $(ls /etc/cron.d 2>/dev/null | wc -l) (имена не печатаем)"
 
-echo "=== 8. дома: вес и категории (имена каталогов наружу не выходят) ==="
+echo "=== 8. дома: вес по подкаталогам и категории (имена наружу не выходят) ==="
 hum() { awk -v kb="$1" 'BEGIN { if (kb >= 1048576) printf "%.1f ГБ", kb/1048576; else if (kb >= 1024) printf "%.1f МБ", kb/1024; else printf "%d КБ", kb }'; }
+NOW=$(date +%s)
 for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-  lbl="${LBL[$l]:-неизвестный}"
   total=$($SUDO timeout 300 du -sk "/home/$l" 2>/dev/null | cut -f1 || true)
-  if [ -z "$total" ]; then echo "дом $lbl: недоступен (нужен доступ)"; continue; fi
-  rel=0; med=0; code=0; dep=0; bak=0; rest=0; denied=0
+  if [ -z "$total" ]; then echo "дом: недоступен (нужен доступ)"; continue; fi
+  links=$($SUDO find "/home/$l" -mindepth 1 -maxdepth 1 -type l 2>/dev/null | wc -l)
+  echo "дом: всего $(hum "$total"), симлинков верхнего уровня: $links (симлинк на каталог считается дважды — категории ниже оценка сверху)"
   while IFS= read -r -d '' sub; do
-    sz=$($SUDO timeout 120 du -sk "$sub" 2>/dev/null | cut -f1 || true)
-    [ -n "$sz" ] || { denied=$((denied + 1)); continue; }
     base=$(basename "$sub")
-    low=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]')
-    case "$low" in
-      releases*|release*|current) rel=$((rel + sz)) ;;
-      media|uploads|upload|public|storage|static|files|images|img|assets|data) med=$((med + sz)) ;;
-      repo*|checkout*|.git|src|app|www|site) code=$((code + sz)) ;;
-      node_modules|.npm|.pnpm*|.cache|vendor|.bundle) dep=$((dep + sz)) ;;
-      backup*|dump*|*.sql|*.dump) bak=$((bak + sz)) ;;
-      *) rest=$((rest + sz)) ;;
-    esac
+    stag="под-$(tag "$sub")"
+    key="${SUBKEY[$stag]:-}"
+    lbl="?"
+    if [ -n "$key" ] && [ -n "${KEYLBL[$key]:-}" ]; then lbl="${KEYLBL[$key]}"; fi
+    units_here=${KEYN[$key]:-0}
+    sz=$($SUDO timeout 120 du -sk "$sub" 2>/dev/null | cut -f1 || true)
+    [ -n "$sz" ] || { echo "$stag ($lbl): недоступен"; continue; }
+    age="н/д"
+    mt=$($SUDO stat -c %Y "$sub" 2>/dev/null || true)
+    [ -n "$mt" ] && age="$(( (NOW - mt) / 86400 )) дн"
+    rel=0; med=0; code=0; dep=0; bak=0; rest=0; denied=0
+    while IFS= read -r -d '' d2; do
+      s2=$($SUDO timeout 120 du -sk "$d2" 2>/dev/null | cut -f1 || true)
+      [ -n "$s2" ] || { denied=$((denied + 1)); continue; }
+      low=$(basename "$d2" | tr '[:upper:]' '[:lower:]')
+      case "$low" in
+        releases*|release*|current) rel=$((rel + s2)) ;;
+        media|uploads|upload|public|storage|static|files|images|img|assets|data) med=$((med + s2)) ;;
+        repo*|checkout*|.git|src|app|www|site) code=$((code + s2)) ;;
+        node_modules|.npm|.pnpm*|.cache|vendor|.bundle) dep=$((dep + s2)) ;;
+        backup*|dump*|*.sql|*.dump) bak=$((bak + s2)) ;;
+        *) rest=$((rest + s2)) ;;
+      esac
+    done < <($SUDO find "$sub" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true)
+    echo "$stag ($lbl, юнитов здесь: $units_here, возраст: $age): всего $(hum "$sz") | релизы $(hum $rel) | медиа+данные $(hum $med) | код $(hum $code) | зависимости+кэши $(hum $dep) | бэкапы $(hum $bak) | прочее $(hum $rest) | недоступно: $denied"
   done < <($SUDO find "/home/$l" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null || true)
-  echo "дом $lbl: всего $(hum "$total") | релизы $(hum $rel) | медиа+данные $(hum $med) | код $(hum $code) | зависимости+кэши $(hum $dep) | бэкапы $(hum $bak) | прочее $(hum $rest) | недоступно подкаталогов: $denied"
+done
+
+echo "=== 8б. корни вне /home (только FHS-имена и числа) ==="
+for r in /srv /var/www /opt /root /data /app; do
+  if [ -d "$r" ]; then
+    t=$($SUDO timeout 120 du -sk "$r" 2>/dev/null | cut -f1 || true)
+    n=$($SUDO find "$r" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l || true)
+    echo "корень $r: ${t:-недоступен} КБ, записей верхнего уровня: ${n:-н/д}"
+  else
+    echo "корня $r нет"
+  fi
 done
 
 echo "=== 9. PostgreSQL: версия, базы, фичи 17 (имена баз наружу не выходят) ==="
 q() { $SUDO -u postgres psql -Atqc "$1" 2>/dev/null || true; }
+# Владелец базы -> ключ жильца: сравнение без учёта регистра с именами
+# подкаталогов и логинов (всё внутреннее, печатается только метка).
+key_of_owner() {
+  local o="$1" lo s l
+  lo=$(printf '%s' "$o" | tr '[:upper:]' '[:lower:]')
+  [ -n "$lo" ] || return 1
+  for s in ${SUBNAMES[@]+"${SUBNAMES[@]}"}; do
+    if [ "$(printf '%s' "$s" | tr '[:upper:]' '[:lower:]')" = "$lo" ]; then
+      for stag in "${!SUBKEY[@]}"; do
+        skl=$(printf '%s' "${SUBKEY[$stag]}" | tr '[:upper:]' '[:lower:]')
+        if [ "$skl" = "$lo" ] || [[ "$skl" == */"$lo" ]]; then
+          printf '%s' "${KEYLBL[${SUBKEY[$stag]}]}"; return 0
+        fi
+      done
+    fi
+  done
+  for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
+    if [ "$(printf '%s' "$l" | tr '[:upper:]' '[:lower:]')" = "$lo" ] && [ -n "${KEYLBL[$l]:-}" ]; then
+      printf '%s' "${KEYLBL[$l]}"; return 0
+    fi
+  done
+  return 1
+}
 if [ -z "$SUDO" ]; then echo "NOTE: postgres недоступен без sudo — раздел пропущен"; else
   VER=$(q "SHOW server_version;")
   [ -n "$VER" ] || echo "NOTE: psql не отвечает — остаток раздела пропущен"
   if [ -n "$VER" ]; then
     echo "версия: $VER"
     echo "суммарный вес всех баз: $(q "SELECT pg_size_pretty(sum(pg_database_size(datname))) FROM pg_database WHERE NOT datistemplate AND datallowconn;")"
-    # Своя база: dbname из окружения НАШЕГО юнита (пароль never, печатаем только метку).
     OUR_DB=""
     DBURL=$(systemctl show "$SVC" -p Environment --value 2>/dev/null | tr ' ' '\n' | grep '^DATABASE_URL=' | head -1 || true)
     if [[ "$DBURL" =~ /([^/?]+)(\?.*)?$ ]]; then OUR_DB="${BASH_REMATCH[1]}"; fi
@@ -233,7 +358,7 @@ if [ -z "$SUDO" ]; then echo "NOTE: postgres недоступен без sudo �
       [ -n "$db" ] || continue
       dbq=${db//\'/\'\'}
       owner=$(q "SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname='$dbq';")
-      if is_login "$owner"; then dblbl="${LBL[$owner]}"; else dblbl="бд-<$(tag "$db")>"; fi
+      if dblbl=$(key_of_owner "$owner"); then :; else dblbl="бд-<$(tag "$db")>"; fi
       if [ -n "$OUR_DB" ] && [ "$db" = "$OUR_DB" ]; then dblbl="наш ($dblbl)"; fi
       n=$((n + 1))
       echo "--- база: $dblbl ---"
@@ -244,7 +369,7 @@ if [ -z "$SUDO" ]; then echo "NOTE: postgres недоступен без sudo �
       echo "пользовательских типов (без composite таблиц): $($SUDO -u postgres psql -d "$db" -Atqc "SELECT count(*) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname NOT IN ('pg_catalog', 'information_schema') AND t.typtype IN ('b', 'd', 'e', 'r', 'm') AND t.typname NOT LIKE 'pg\_%';" 2>/dev/null || true)"
     done < <(q "SELECT datname FROM pg_database WHERE NOT datistemplate AND datallowconn ORDER BY pg_database_size(datname) DESC;")
     echo "баз итого: $n"
-    [ -n "$OUR_DB" ] || echo "NOTE: своя база не опознана (env без DATABASE_URL, схемы track нигде нет) — все строки обезличены"
+    [ -n "$OUR_DB" ] || echo "NOTE: своя база не опознана — все строки обезличены"
   fi
 fi
 
@@ -255,10 +380,15 @@ echo "сторонних туннелей/агентов в процессах: 
 ss -s 2>/dev/null | head -8 || true
 echo "NOTE: наша цепочка — прямой ssh по ключу (jump-host нет: workflows идут на TARGET напрямую, ProxyJump нигде не задан — факт репозитория). Чужие цепочки изнутри бокса не проверяли (потребовало бы чтения чужих конфигов)."
 
-echo "=== 11. припаркованный (дом без процессов и без юнита) ==="
+echo "=== 11. припаркованный (без юнита и без процессов) ==="
 for l in ${LOGINS[@]+"${LOGINS[@]}"}; do
-  lbl="${LBL[$l]:-неизвестный}"
   procs=$(ps -o user= 2>/dev/null | awk -v u="$l" '$1==u' | wc -l)
-  if [ "$procs" -eq 0 ]; then echo "$lbl: процессов ноль — кандидат в припаркованные (вес — в разделе 8, база — в разделе 9 по владельцу)"; fi
+  if [ "$procs" -eq 0 ]; then echo "логин без процессов — кандидат в припаркованные (ключи ниже точнее)"; fi
+done
+for stag in "${!SUBKEY[@]}"; do
+  key="${SUBKEY[$stag]}"
+  if [ "${KEYN[$key]:-0}" -eq 0 ] && [ "${KEYLBL[$key]}" != "наш" ]; then
+    echo "кандидат в припаркованные: $stag (${KEYLBL[$key]}, юнитов здесь: 0 — вес в разделе 8, база в разделе 9 по владельцу)"
+  fi
 done
 echo "=== конец описи ==="
