@@ -17,6 +17,7 @@ import * as migration_20260918_212053_reset_password_requested_at from './202609
 import * as migration_20261003_120000_entry_address from './20261003_120000_entry_address';
 import * as migration_20261003_140000_entry_gos_category from './20261003_140000_entry_gos_category';
 import * as migration_20261004_120000_publish_verified from './20261004_120000_publish_verified';
+import * as migration_20261008_120000_entry_verified_phone_labels from './20261008_120000_entry_verified_phone_labels';
 
 export const migrations = [
   {
@@ -113,5 +114,10 @@ export const migrations = [
     up: migration_20261004_120000_publish_verified.up,
     down: migration_20261004_120000_publish_verified.down,
     name: '20261004_120000_publish_verified'
+  },
+  {
+    up: migration_20261008_120000_entry_verified_phone_labels.up,
+    down: migration_20261008_120000_entry_verified_phone_labels.down,
+    name: '20261008_120000_entry_verified_phone_labels'
   },
 ];
