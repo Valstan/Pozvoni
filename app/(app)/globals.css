@@ -347,6 +347,12 @@ body {
   font-size: 0.85rem;
 }
 
+.dir-phone-label {
+  margin-left: 0.35rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .dir-more {
   margin: 0.6rem 0 0;
 }
