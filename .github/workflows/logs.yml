@@ -1,0 +1,64 @@
+name: logs
+
+# Чтение журнала службы на боксе (инцидент 2026-10-08).
+# Только ручной запуск: чтение логов прода — действие дежурного, а не конвейера.
+#
+# Все адреса, порты, пути и имена приходят СЕКРЕТАМИ, не через vars: значения vars
+# печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
+# D-038). Сам журнал дополнительно чистится скриптом: имя бокса, имя службы,
+# IPv4 и домашние пути в вывод не попадают (см. deploy/remote-logs.sh).
+
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: "Строк журнала с хвоста (до 500)"
+        required: false
+        default: "150"
+
+permissions:
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: logs
+  cancel-in-progress: false
+
+jobs:
+  logs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Журнал службы
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SERVICE: ${{ secrets.DEPLOY_SERVICE }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой:
+        # текст внутри команды прошёл бы четыре парсера подряд (мандат D-046).
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SERVICE" "${{ inputs.lines }}" < deploy/remote-logs.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
