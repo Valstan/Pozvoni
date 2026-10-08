@@ -57,15 +57,7 @@ export const Entries: CollectionConfig = {
       label: "Телефоны",
       minRows: 1,
       required: true,
-      fields: [
-        { name: "number", type: "text", label: "Номер", required: true },
-        {
-          name: "label",
-          type: "text",
-          label: "Подпись (приёмная, диспетчер…)",
-          admin: { description: "Видна посетителям рядом с номером. Пусто — без подписи." },
-        },
-      ],
+      fields: [{ name: "number", type: "text", label: "Номер", required: true }],
     },
     {
       name: "prices",
@@ -121,15 +113,6 @@ export const Entries: CollectionConfig = {
       type: "text",
       label: "Откуда номер",
       admin: { description: "Для проверки: сайт-источник или «предложен посетителем»." },
-    },
-    {
-      name: "verifiedAt",
-      type: "date",
-      label: "Проверено звонком (дата)",
-      admin: {
-        description:
-          "Дата последней проверки номера звонком или лично. Показывает посетителям бейдж «проверено звонком · месяц». Пусто — бейджа нет.",
-      },
     },
   ],
 };
