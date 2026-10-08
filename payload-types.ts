@@ -167,6 +167,10 @@ export interface Entry {
   category: 'taxi' | 'shop' | 'master' | 'brigade' | 'cargo' | 'gos' | 'other';
   phones: {
     number: string;
+    /**
+     * Видна посетителям рядом с номером. Пусто — без подписи.
+     */
+    label?: string | null;
     id?: string | null;
   }[];
   prices?:
@@ -177,6 +181,9 @@ export interface Entry {
       }[]
     | null;
   note?: string | null;
+  /**
+   * Малмыж, улица и дом. Правит персонал при проверке; владелец — в кабинете.
+   */
   address?: string | null;
   /**
    * Правит владелец в кабинете; персонал — при необходимости.
@@ -184,7 +191,7 @@ export interface Entry {
   description?: string | null;
   hours?: string | null;
   /**
-   * Ставится после подтверждения звонком (заявка в /kabinet). Владелец правит описание, часы и цены сам.
+   * Ставится после подтверждения звонком (заявка в /kabinet). Владелец правит описание, адрес, часы и цены сам.
    */
   owner?: (number | null) | User;
   /**
@@ -195,6 +202,10 @@ export interface Entry {
    * Для проверки: сайт-источник или «предложен посетителем».
    */
   source?: string | null;
+  /**
+   * Дата последней проверки номера звонком или лично. Показывает посетителям бейдж «проверено звонком · месяц». Пусто — бейджа нет.
+   */
+  verifiedAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -311,6 +322,7 @@ export interface EntriesSelect<T extends boolean = true> {
     | T
     | {
         number?: T;
+        label?: T;
         id?: T;
       };
   prices?:
@@ -327,6 +339,7 @@ export interface EntriesSelect<T extends boolean = true> {
   owner?: T;
   status?: T;
   source?: T;
+  verifiedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
