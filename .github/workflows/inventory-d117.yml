@@ -1,0 +1,61 @@
+name: inventory-d117
+
+# Опись бокса под переезд D-117 (мандат brain 2026-10-08-sabantuy-inventory-measure).
+# Только ручной запуск и только чтение: скрипт не пишет, не рестартит,
+# PostgreSQL — одни SELECT по каталогам. Дежурный прогон, а не конвейер.
+#
+# Все адреса, порты, пути и имена приходят СЕКРЕТАМИ, не через vars: значения vars
+# печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
+# D-038). Сам скрипт дополнительно обезличивает вывод на месте: имена юнитов,
+# логины, пути, порты и имена баз в лог не попадают, только метки и числа
+# (см. deploy/remote-inventory-d117.sh).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: inventory-d117
+  cancel-in-progress: false
+
+jobs:
+  inventory-d117:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Опись бокса
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SERVICE: ${{ secrets.DEPLOY_SERVICE }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой:
+        # текст внутри команды прошёл бы четыре парсера подряд (мандат D-046).
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SERVICE" < deploy/remote-inventory-d117.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
