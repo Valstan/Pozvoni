@@ -13,6 +13,7 @@ import KarmaVote from "@/components/KarmaVote";
 import { ratingLine, type RatingStats } from "@/lib/ratings";
 import { ORG_KEY } from "@/lib/phone-key";
 import type { EntryKarma, KarmaCount } from "@/lib/karma";
+import { isOfficialSource, updateMonth } from "@/lib/entry-trust";
 
 export type Viewer = { id: number; role: string } | null;
 
@@ -32,6 +33,10 @@ function EntryCard({
   const line = statsLine(stats);
   const stars = ratingLine(rating);
   const ownerId = typeof entry.owner === "object" && entry.owner ? entry.owner.id : entry.owner;
+  // Бейджи доверия (вскрытие 2026-10-07): свежесть правки и официальный источник.
+  // «Проверено звонком» здесь нет — для него нужно поле и разметка владельцем.
+  const fresh = updateMonth(entry.updatedAt);
+  const official = isOfficialSource(entry.source);
   return (
     <li className="dir-card">
       <div className="dir-name">
@@ -41,6 +46,13 @@ function EntryCard({
       </div>
       {entry.address && <div className="dir-address">{entry.address}</div>}
       {entry.hours && <div className="dir-hours">{entry.hours}</div>}
+      {(fresh || official) && (
+        <p className="dir-meta">
+          {fresh ? `обновлено · ${fresh}` : null}
+          {fresh && official ? " · " : null}
+          {official ? "с официального сайта" : null}
+        </p>
+      )}
       {/* Телефоны — клиентский компонент: после звонка спрашивает «дозвонились?» (спринт 5),
           и у каждого номера своя карма (решение владельца 2026-09-10). Map разворачивается
           в обычный объект: границу сервер→клиент так переезжать дешевле. */}
@@ -153,6 +165,14 @@ export default function DirectoryList({
                 />
               ))}
             </ul>
+            {/* Короткая секция вербует: ссылка на форму предложения прямо под ней,
+                а не только в подвале страницы (вскрытие 2026-10-07). Якорь ведёт на
+                форму этой же страницы — скоуп не теряется. */}
+            {list.length < 3 && (
+              <p className="dir-more">
+                <a href="/nomera#predlozhit">Знаете ещё номера? Предложите</a>
+              </p>
+            )}
           </section>
         );
       })}
