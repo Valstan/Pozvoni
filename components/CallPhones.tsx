@@ -16,7 +16,7 @@ import type { KarmaCount } from "@/lib/karma";
 // Отметка одна на номер с устройства в сутки — это правило сервера (первичный ключ), а
 // здесь просто не спрашиваем второй раз в той же сессии страницы.
 
-type Phone = { id?: string | null; number: string };
+type Phone = { id?: string | null; number: string; label?: string | null };
 
 function telHref(raw: string): string {
   return "tel:" + raw.replace(/[^\d+]/g, "");
@@ -87,6 +87,9 @@ export default function CallPhones({
               <a className="dir-phone" href={telHref(p.number)} onClick={onCall}>
                 {p.number}
               </a>
+              {/* Подпись номера (приёмная, диспетчер…): ставится персоналом в админке.
+                  Пусто — без подписи, а не враньё. */}
+              {p.label && <span className="dir-phone-label"> · {p.label}</span>}
               {/* Поле без цифр («по договору») номером не является: голосовать не за что. */}
               {key !== "" && (
                 <KarmaVote entryId={entryId} phone={p.number} count={karma?.[key]} />
