@@ -44,7 +44,16 @@ redact() {
 echo "=== состояние ==="
 echo "active: $(systemctl is-active "$SERVICE" 2>/dev/null || echo неизвестно)"
 echo "failed: $(systemctl is-failed "$SERVICE" 2>/dev/null || echo неизвестно)"
-systemctl show "$SERVICE" -p ActiveState,SubState,Result,ExecMainStatus 2>/dev/null || true
+systemctl show "$SERVICE" -p ActiveState,SubState,Result,ExecMainStatus,NRestarts,ActiveEnterTimestamp 2>/dev/null || true
 
-echo "=== журнал ($LINES строк) ==="
+echo "=== журнал службы ($LINES строк) ==="
 journalctl -u "$SERVICE" -n "$LINES" --no-pager 2>/dev/null | redact || echo "журнал недоступен"
+
+# События systemd по юниту (старты/остановки/коды выхода) живут НЕ в `-u`,
+# а в системном журнале — без этого куска рестарт-crashloop не виден.
+echo "=== события юнита в системном журнале ==="
+journalctl --no-pager -n 600 2>/dev/null | grep -F "$SERVICE" | tail -80 | redact || echo "событий нет"
+
+echo "=== journald ==="
+systemctl is-active systemd-journald 2>/dev/null || echo "journald не active"
+journalctl --disk-usage 2>/dev/null || true
