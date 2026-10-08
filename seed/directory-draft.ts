@@ -18,7 +18,7 @@
 type DraftEntry = {
   name: string;
   category: "taxi" | "shop" | "master" | "brigade" | "cargo" | "gos" | "other";
-  phones: { number: string; label?: string }[];
+  phones: { number: string }[];
   prices?: { label: string; value: string }[];
   note?: string;
   address?: string;
@@ -581,7 +581,7 @@ export const directoryDraft: DraftEntry[] = [
     name: "ОМВД России «Малмыжский»",
     category: "gos",
     status: "published",
-    phones: [{ number: "+7 83347 2-22-59", label: "дежурная часть" }, { number: "+7 83347 3-60-33" }],
+    phones: [{ number: "+7 83347 2-22-59" }, { number: "+7 83347 3-60-33" }],
     source: "malmigcrb.medkirov.ru — сбор 2026-10-07",
   },
   {
@@ -607,7 +607,7 @@ export const directoryDraft: DraftEntry[] = [
     name: "Военный комиссариат (Вятские Поляны, Вятскополянский и Малмыжский районы)",
     category: "gos",
     status: "published",
-    phones: [{ number: "+7 83334 6-28-67", label: "дежурный" }, { number: "+7 83334 6-10-87", label: "военком" }],
+    phones: [{ number: "+7 83334 6-28-67" }, { number: "+7 83334 6-10-87" }],
     address: "г. Вятские Поляны, ул. Ленина, 56",
     note: "Отдельного военкомата в Малмыже нет — район обслуживается из Вятских Полян",
     source: "kirovreg.ru/military_com (таблица от 04.09.2026) — сбор 2026-10-07",
@@ -616,7 +616,7 @@ export const directoryDraft: DraftEntry[] = [
     name: "Отделение ГИБДД ОМВД России «Малмыжский»",
     category: "gos",
     status: "published",
-    phones: [{ number: "+7 83347 2-22-59" }, { number: "+7 83347 2-64-08", label: "ИАЗ" }],
+    phones: [{ number: "+7 83347 2-22-59" }, { number: "+7 83347 2-64-08" }],
     source: "гибдд.рф/r/43 — сбор 2026-10-07",
   },
   {
