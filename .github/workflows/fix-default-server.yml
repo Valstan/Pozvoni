@@ -1,0 +1,82 @@
+name: fix-default-server
+
+# Согласованная замена владельца default_server на :80 бокса (письмо brain
+# 2026-10-19): Сабантуй снимает свой catch-all первым, затем мы ставим свой с
+# `return 444`. Срок — 23.10, порядок обязателен: два `default_server` на одном
+# `listen` валят `nginx -t`, а за ним любой рестарт.
+#
+# Два режима:
+#   check — только чтение: кто держит default_server, что отвечает чужой Host и
+#           наши имена, зелёный ли `nginx -t`. Ничего не меняет. Им же ловится
+#           момент, когда сосед снял свой default_server (RESULT: READY_TO_APPLY).
+#   apply — идемпотентная правка: если default_server ещё у соседа — НИЧЕГО не
+#           трогает и выходит с кодом 3 (порядок не переставляем); если наш блок
+#           уже стоит — только проверяет; иначе добавляет catch-all в нашу
+#           секцию с бэкапом, `nginx -t` до перезагрузки и откатом при неуспехе.
+#
+# Все адреса, порты и пути приходят СЕКРЕТАМИ, не через vars: значения vars
+# печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
+# D-038). Здесь нет ни одного echo с фактами о сервере.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check — только посмотреть; apply — поставить наш catch-all 444"
+        type: choice
+        options: [check, apply]
+        default: check
+
+permissions:
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: fix-default-server
+  cancel-in-progress: false
+
+jobs:
+  fix-default-server:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: default_server и catch-all 444
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          MODE: ${{ inputs.mode }}
+          SMOKE_URL: ${{ secrets.DEPLOY_SMOKE_URL }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой (мандат D-046).
+        # SMOKE_URL — тот же секрет, что у смоука: список публичных доменов не должен
+        # жить в двух местах; разбивает его удалённый шелл (G30).
+        #
+        # stderr клиента ssh заглушён намеренно: при отказе он печатает хост и порт
+        # отдельными словами, а маскировка GitHub ловит только полное значение секрета
+        # (AGENTS.md, D-038). Вся диагностика скрипта идёт в stdout.
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$MODE" "$SMOKE_URL" \
+            < deploy/remote-fix-default-server.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
