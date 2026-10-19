@@ -112,6 +112,10 @@ show_journal() { # <plain|sorted> <строк> <аргументы journalctl...
     return 0
   fi
   journalctl --no-pager -o short-iso "$@" > "$out" 2> "$err" || rc=$?
+  # Постоянный шум stderr journalctl для не-рута («ты не видишь сообщения
+  # системы») — подсказка о группах, а не ошибка выборки: файлы журнала
+  # при этом читаются (улики в прогонах видно). В классификацию не берём.
+  err_clean=$(grep -v -e "not seeing messages" -e "can see all messages" "$err" 2>/dev/null || true)
   if [ "$rc" = "0" ]; then
     if [ -s "$out" ]; then
       if [ "$mode" = "sorted" ]; then
@@ -122,11 +126,13 @@ show_journal() { # <plain|sorted> <строк> <аргументы journalctl...
     else
       echo "(записей нет)"
     fi
-  elif [ "$rc" = "1" ] && [ ! -s "$out" ] && [ ! -s "$err" ]; then
+  elif [ "$rc" = "1" ] && [ ! -s "$out" ] && [ -z "$err_clean" ]; then
     echo "(записей нет)"
   else
     echo "выборка журнала не выполнилась (код $rc)"
-    head -n 2 "$err" | redact
+    if [ -n "$err_clean" ]; then
+      printf '%s\n' "$err_clean" | head -n 2 | redact || true
+    fi
   fi
   rm -f "$out" "$err"
 }
@@ -172,6 +178,7 @@ fi
 echo "-- OOM в syslog/kern.log/messages (все ротации; kern.log и нужен для OOM) --"
 syslog_files=$(ls -1r /var/log/syslog* /var/log/kern.log* /var/log/messages* 2>/dev/null || true)
 if [ -n "$syslog_files" ]; then
+  echo "-- список файлов: $(printf '%s ' $syslog_files)"
   syslog_matches=$( { for f in $syslog_files; do
       case "$f" in
         *.gz) zcat "$f" 2>/dev/null ;;
