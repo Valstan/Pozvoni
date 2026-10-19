@@ -52,31 +52,63 @@ host_of() {
   printf '%s\n' "$u"
 }
 
-OUR_HOSTS=()
-for u in "$@"; do
-  h=$(host_of "$u")
-  if [ -n "$h" ]; then OUR_HOSTS+=("$h"); fi
-done
-if [ "${#OUR_HOSTS[@]}" -eq 0 ]; then
-  echo "из URL не удалось выделить имена"
-  exit 2
-fi
+# Браузер шлёт IDN в punycode, и реестр хранит punycode (DOMAINS.md §3), но
+# секрет с URL мог быть набран и кириллицей. Поэтому домен ищется в обеих
+# формах; python3 на Ubuntu есть штатно, без него остаётся форма как есть.
+to_puny() {
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 -c 'import sys; print(sys.argv[1].encode("idna").decode("ascii"))' "$1" 2>/dev/null || true
+}
+to_unicode() {
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 -c 'import sys; print(sys.argv[1].encode("ascii").decode("idna"))' "$1" 2>/dev/null || true
+}
+host_candidates() {
+  local h="$1" alt
+  printf '%s\n' "$h"
+  alt=$(to_puny "$h")
+  if [ -n "$alt" ] && [ "$alt" != "$h" ]; then printf '%s\n' "$alt"; fi
+  alt=$(to_unicode "$h")
+  if [ -n "$alt" ] && [ "$alt" != "$h" ]; then printf '%s\n' "$alt"; fi
+}
 
 # ── Наша секция: файл conf.d, где в server_name есть хотя бы один наш домен ──────────
+# OUR_HOSTS хранит ту форму имени, которая нашлась в конфиге, — ею и пробуем.
+OUR_HOSTS=()
 CONF=""
-for h in "${OUR_HOSTS[@]}"; do
-  mapfile -t FOUND < <(sudo grep -lF -- "$h" /etc/nginx/conf.d/*.conf 2>/dev/null || true)
-  if [ "${#FOUND[@]}" -gt 1 ]; then
-    echo "домен нашёлся в нескольких файлах nginx — не могу однозначно выбрать нашу секцию"
-    exit 1
+n=0
+for u in "$@"; do
+  n=$((n + 1))
+  h=$(host_of "$u")
+  if [ -z "$h" ]; then
+    echo "из URL № $n не удалось выделить имя"
+    exit 2
   fi
-  if [ "${#FOUND[@]}" -eq 1 ]; then
-    if [ -n "$CONF" ] && [ "$CONF" != "${FOUND[0]}" ]; then
-      echo "наши домены разошлись по разным файлам nginx — не могу выбрать нашу секцию"
+
+  matched=""
+  while IFS= read -r cand; do
+    [ -n "$cand" ] || continue
+    mapfile -t FOUND < <(sudo grep -lF -- "$cand" /etc/nginx/conf.d/*.conf 2>/dev/null || true)
+    if [ "${#FOUND[@]}" -gt 1 ]; then
+      echo "домен № $n нашёлся в нескольких файлах nginx — не могу выбрать нашу секцию"
       exit 1
     fi
-    CONF="${FOUND[0]}"
+    if [ "${#FOUND[@]}" -eq 1 ]; then
+      if [ -n "$CONF" ] && [ "$CONF" != "${FOUND[0]}" ]; then
+        echo "наши домены разошлись по разным файлам nginx — не могу выбрать нашу секцию"
+        exit 1
+      fi
+      CONF="${FOUND[0]}"
+      matched="$cand"
+      break
+    fi
+  done < <(host_candidates "$h")
+
+  if [ -z "$matched" ]; then
+    echo "домен № $n не нашёлся в конфиге nginx"
+    exit 1
   fi
+  OUR_HOSTS+=("$matched")
 done
 if [ -z "$CONF" ]; then
   echo "не нашёл нашу секцию nginx по нашим доменам"
