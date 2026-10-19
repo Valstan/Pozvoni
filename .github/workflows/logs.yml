@@ -3,6 +3,19 @@ name: logs
 # Чтение журнала службы на боксе (инцидент 2026-10-08).
 # Только ручной запуск: чтение логов прода — действие дежурного, а не конвейера.
 #
+# Три режима (механика и уроки — в deploy/remote-logs.sh):
+#   * по умолчанию — хвост журнала службы;
+#   * окно (since/until) — что было в заданные часы; время — с ЯВНОЙ зоной
+#     (бокс живёт на Europe/Moscow, инциденты в письмах — в UTC), формат без
+#     пробелов: 2026-10-08T06:25:00Z;
+#   * поиск (grep) — по содержимому ВСЕГО журнала (PCRE): находит записи, до
+#     которых не доводит индекс journald.
+# Каждый прогон дополнительно отдаёт: события юнита, память и следы OOM
+# (журнал, dmesg, syslog), здоровье journald.
+#
+# ⚠️ Значения входов видны публично (репозиторий публичен) — секретов в них
+# быть не должно; окно и шаблон поиска секретами не являются.
+#
 # Все адреса, порты, пути и имена приходят СЕКРЕТАМИ, не через vars: значения vars
 # печатаются в лог прогона, а логи публичного репозитория публичны (AGENTS.md,
 # D-038). Сам журнал дополнительно чистится скриптом: имя бокса, имя службы,
@@ -12,9 +25,21 @@ on:
   workflow_dispatch:
     inputs:
       lines:
-        description: "Строк журнала с хвоста (до 500)"
+        description: "Хвост: строк журнала службы (до 500; действует без окна и поиска)"
         required: false
         default: "150"
+      since:
+        description: "Окно: начало (напр. 2026-10-08T06:25:00Z); пусто — без окна"
+        required: false
+        default: ""
+      until:
+        description: "Окно: конец; пусто — до конца журнала"
+        required: false
+        default: ""
+      grep:
+        description: "Поиск по всему журналу (PCRE; напр. Migrating|Migrated); пусто — без поиска"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -51,11 +76,31 @@ jobs:
           TARGET: ${{ secrets.DEPLOY_TARGET }}
           SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
           SERVICE: ${{ secrets.DEPLOY_SERVICE }}
+          LINES: ${{ inputs.lines }}
+          SINCE: ${{ inputs.since }}
+          UNTIL: ${{ inputs.until }}
+          GREP: ${{ inputs.grep }}
         # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой:
         # текст внутри команды прошёл бы четыре парсера подряд (мандат D-046).
+        # Значения подставляются через printf %q: ssh склеивает аргументы
+        # пробелами, и шаблон поиска с `|` или пробелом без экранирования
+        # развалил бы команду на пути (или увёл её в чужую команду).
         run: |
+          case "$SINCE$UNTIL$GREP" in
+            *$'\n'*|*$'\t'*)
+              echo "переводы строк и табуляции во входах окна/поиска не поддерживаем"
+              exit 1
+              ;;
+          esac
+          q_service=$(printf '%q' "$SERVICE")
+          q_lines=$(printf '%q' "$LINES")
+          q_since=$(printf '%q' "$SINCE")
+          q_until=$(printf '%q' "$UNTIL")
+          q_grep=$(printf '%q' "$GREP")
           set +e
-          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SERVICE" "${{ inputs.lines }}" < deploy/remote-logs.sh 2>/dev/null
+          ssh -p "$SSH_PORT" "$TARGET" \
+            "bash -s -- $q_service $q_lines --since=$q_since --until=$q_until --grep=$q_grep" \
+            < deploy/remote-logs.sh 2>/dev/null
           rc=$?
           set -e
           if [ "$rc" = "255" ]; then
