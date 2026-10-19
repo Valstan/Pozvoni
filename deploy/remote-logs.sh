@@ -112,10 +112,11 @@ show_journal() { # <plain|sorted> <строк> <аргументы journalctl...
     return 0
   fi
   journalctl --no-pager -o short-iso "$@" > "$out" 2> "$err" || rc=$?
-  # Постоянный шум stderr journalctl для не-рута («ты не видишь сообщения
-  # системы») — подсказка о группах, а не ошибка выборки: файлы журнала
-  # при этом читаются (улики в прогонах видно). В классификацию не берём.
-  err_clean=$(grep -v -e "not seeing messages" -e "can see all messages" "$err" 2>/dev/null || true)
+  # Постоянный шум stderr journalctl для не-рута — подсказка о группах
+  # (три строки: Hint / Users in groups / Pass -q) — а не ошибка выборки:
+  # файлы журнала при этом читаются (улики в прогонах видно). В
+  # классификацию подсказку не берём.
+  err_clean=$(grep -v -e "not seeing messages" -e "can see all messages" -e "Pass -q to turn off this notice" "$err" 2>/dev/null || true)
   if [ "$rc" = "0" ]; then
     if [ -s "$out" ]; then
       if [ "$mode" = "sorted" ]; then
@@ -175,16 +176,23 @@ if dmesg_out=$(dmesg -T 2>/dev/null); then
 else
   echo "dmesg недоступен этому пользователю"
 fi
-echo "-- OOM в syslog/kern.log/messages (все ротации; kern.log и нужен для OOM) --"
+echo "-- OOM в syslog/kern.log/messages (все ротации; по OOM ядра главный свидетель — ядро) --"
 syslog_files=$(ls -1r /var/log/syslog* /var/log/kern.log* /var/log/messages* 2>/dev/null || true)
+syslog_fold() { # склейка всех файлов в хронологическом порядке (старые → новые)
+  for f in $syslog_files; do
+    case "$f" in
+      *.gz) zcat "$f" 2>/dev/null ;;
+      *)    cat "$f" 2>/dev/null ;;
+    esac
+  done
+}
 if [ -n "$syslog_files" ]; then
   echo "-- список файлов: $(printf '%s ' $syslog_files)"
-  syslog_matches=$( { for f in $syslog_files; do
-      case "$f" in
-        *.gz) zcat "$f" 2>/dev/null ;;
-        *)    cat "$f" 2>/dev/null ;;
-      esac
-    done; } | grep -iE 'oom|killed process' || true )
+  # Покрытие ядра: если строк « kernel: » нет вовсе, «совпадений нет» про OOM
+  # ядра ничего не доказывает — тогда честно видно, что свидетеля не спросить.
+  kernel_lines=$(syslog_fold | grep -c ' kernel: ' || true)
+  echo "-- строк ядра (идентификатор kernel :) в этих файлах: $kernel_lines --"
+  syslog_matches=$(syslog_fold | grep -iE 'oom|killed process' || true)
   if [ -n "$syslog_matches" ]; then
     printf '%s\n' "$syslog_matches" | LC_ALL=C sort -M -k1,1 -k2,2n -k3,3 | tail -n 15 | redact
   else
@@ -200,3 +208,5 @@ echo "${st:-неизвестно}"
 journalctl --disk-usage 2>/dev/null || true
 echo "-- список загрузок (обрыв/пропуски — признак сломанного индекса) --"
 journalctl --list-boots --no-pager 2>/dev/null | tail -n 5 | redact || true
+echo "-- последние строки ядра в журнале (видно ли ядро этому пользователю) --"
+journalctl --no-pager -o short-iso -k -n 3 2>/dev/null | redact || echo "(ядерных строк журнал не отдаёт)"
