@@ -1,0 +1,274 @@
+name: vault
+
+# Комната КАРМАНа (D-102, срок 23.10): вход по паспорту GitHub OIDC (форма Б канона
+# brain_matrica/docs/KARMAN_ROOM.md) — статического токена на раннере нет и в env он
+# не уезжает. Сессия живёт внутри одного шага и гаснет на trap, даже если шаг упал
+# или прогон отменён.
+#
+# Режимы:
+#   probe   — доказать, что личность работает: печатает только поля контракта.
+#             Ответ 401/403/429/503 — тоже результат: это ответ ХРАНИЛИЩА, а не
+#             поломка конвейера, поэтому probe выходит нулём и называет причину.
+#   list    — имена ключей комнаты (значения не печатаются никогда; список имён
+#             обязателен для строки канона и приёмки — KARMAN_ROOM.md).
+#   portmap — снять карту занятых портов бокса и записать её ключом PORT_MAP,
+#             затем проверить, что записанное вернулось.
+#
+# ⚠️ Порты и адреса — recon (AGENTS.md, D-038). Карта портов — единственное
+# значение, которое вообще уходит в комнату: в публичный лог попадают только
+# счётчики по меткам (наш / сосед-N / системный), без портов и без адресов.
+# Адрес хранилища — секрет VAULT_BASE_URL, не file/vars: значения vars печатаются
+# в лог публичного прогона.
+#
+# ЗАПУСК ТОЛЬКО С main: сервер пинит субъект регэкспом refs/heads/(main|master) —
+# ветки, PR и форки личность не минтят (karman/docs/passport-server.md), плюс
+# `workflow_dispatch` доступен только для файла в ветке по умолчанию.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "probe — доступность и личность; list — имена ключей; portmap — снять и записать PORT_MAP"
+        type: choice
+        options: [probe, list, portmap]
+        default: probe
+
+permissions:
+  id-token: write # без этого GitHub удостоверение не выдаст
+  contents: read
+
+# Все run-шаги — под `bash -eo pipefail` (письмо brain 2026-09-05, [G322]).
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: vault
+  cancel-in-progress: false
+
+jobs:
+  vault:
+    # github-hosted обязателен: сервер отвергает self-hosted (runner_environment).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа к боксу
+        # Нужен только режиму portmap: карту портов снимаем на самом боксе
+        # (мандат D-046 — скрипт уходит файлом на stdin).
+        if: inputs.mode == 'portmap'
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Комната КАРМАНа
+        env:
+          VAULT_BASE_URL: ${{ secrets.VAULT_BASE_URL }}
+          MODE: ${{ inputs.mode }}
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SERVICE: ${{ secrets.DEPLOY_SERVICE }}
+        run: |
+          set -euo pipefail
+
+          # Тело чужого ответа в лог не печатаем (D-038): не-контрактный ответ отдаёт
+          # прокси, его страницы штатно содержат хостнейм и версию ПО, а маска GitHub
+          # знает только точное значение секрета. Плюс stdout раннера парсится на
+          # `::`-директивы — сырое тело это ещё и вектор инъекции.
+          errmsg() { # $1 — тело ответа
+            printf '%s' "$1" | jq -re '.error' 2>/dev/null | head -c 200 | tr -d '\r\n' | sed 's/::/;;/g' || true
+          }
+
+          if [ -z "${VAULT_BASE_URL}" ]; then
+            echo "::error::Secret VAULT_BASE_URL не задан (базовый URL комнаты)."
+            exit 1
+          fi
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ] || [ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" ]; then
+            echo "::error::OIDC-эндпоинт недоступен job'у — проверь permissions: id-token: write."
+            exit 1
+          fi
+
+          # 1. Удостоверение своего CI. audience фиксирован сервером — karman-vault.
+          # RC-паттерн вместо голого присваивания: под `set -e` подстановка валит шаг
+          # молча, и ни одна диагностика ниже не отработает.
+          RC=0
+          ASSERTION="$(curl -sf --connect-timeout 5 --max-time 20 \
+            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=karman-vault" | jq -r .value)" || RC=$?
+          if [ "$RC" != 0 ]; then
+            echo "::error::Удостоверение не получено (curl/jq rc=$RC; 22=HTTP-ошибка, 28=таймаут, 6=DNS)."
+            exit 1
+          fi
+          echo "::add-mask::$ASSERTION"
+          if [ -z "$ASSERTION" ] || [ "$ASSERTION" = "null" ]; then
+            echo "::error::OIDC-эндпоинт ответил без поля value."
+            exit 1
+          fi
+
+          # 2. Обмен удостоверения на токен своей комнаты. Код отделяем от тела: 403
+          # (личности нет в реестре) и 401 (подпись/ветка/jti) — разные зоны
+          # ответственности, и различать их важнее, чем «не 201».
+          RC=0
+          RESP="$(curl -s -X POST "${VAULT_BASE_URL%/}/api/secrets/session" \
+            -H "Authorization: Bearer $ASSERTION" \
+            --connect-timeout 5 --max-time 20 -w '\n%{http_code}')" || RC=$?
+          if [ "$RC" != 0 ]; then
+            echo "::error::хранилище недосягаемо с раннера (curl rc=$RC; 6=DNS, 7=connect, 28=таймаут) — зона сети/бокса."
+            exit 1
+          fi
+          CODE="$(printf '%s' "$RESP" | tail -n1)"
+          BODY="$(printf '%s' "$RESP" | sed '$d')"
+
+          if [ "$CODE" != "201" ]; then
+            MSG="$(errmsg "$BODY")"
+            case "$CODE" in
+              401) echo "401 = подпись/срок/ветка/повтор jti. Запуск не с main?" ;;
+              403) echo "403 = удостоверение валидно, а личности в реестре нет — ход владельца комнаты (КАРМАНа)." ;;
+              429) echo "429 = лимит по доказанному claim'у, повторить позже." ;;
+              503) echo "503 = JWKS issuer'а недоступен, временная проблема на стороне хранилища." ;;
+              *)   echo "${CODE} вне словаря контракта (401/403/429/503) — вероятно отвечал прокси, а не приложение." ;;
+            esac
+            echo "POST /api/secrets/session -> ${CODE}${MSG:+: $MSG}"
+            # probe существует ровно ради этого ответа: «хранилище достаётся, личности
+            # пока нет» — результат, а не поломка конвейера. Остальные режимы без
+            # сессии работать не могут и падают.
+            [ "$MODE" = "probe" ] && exit 0
+            exit 1
+          fi
+
+          TOKEN="$(printf '%s' "$BODY" | jq -r '.token // empty')"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::201 без поля token — ответ не по контракту."
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          # Самоотзыв на trap, а не последней строкой: под `set -e` любой сбой ниже
+          # оборвал бы шаг раньше, и живая сессия висела бы до конца TTL. INT/TERM —
+          # чтобы отмена прогона тоже гасила. Токен НЕ уходит в $GITHUB_ENV: это
+          # отдало бы его всем шагам job'а.
+          trap 'curl -s -o /dev/null -X DELETE "${VAULT_BASE_URL%/}/api/secrets/session" -H "Authorization: Bearer $TOKEN" --max-time 20 || true' EXIT INT TERM
+
+          # 3. Интроспекция — проверка, а не печать: `identity: null` означал бы
+          # статический токен, то есть паспорт не сработал. projectId не печатаем:
+          # это порядковый номер комнаты в общем хранилище (D-038, «состав соседей»).
+          RC=0
+          SELF="$(curl -s "${VAULT_BASE_URL%/}/api/secrets/self" -H "Authorization: Bearer $TOKEN" \
+            --connect-timeout 5 --max-time 20 -w '\n%{http_code}')" || RC=$?
+          if [ "$RC" != 0 ]; then echo "::error::GET /api/secrets/self недосягаем (curl rc=$RC)."; exit 1; fi
+          SCODE="$(printf '%s' "$SELF" | tail -n1)"
+          SBODY="$(printf '%s' "$SELF" | sed '$d')"
+          if [ "$SCODE" != "200" ]; then
+            SMSG="$(errmsg "$SBODY")"
+            echo "::error::GET /api/secrets/self -> ${SCODE}${SMSG:+: $SMSG}"
+            exit 1
+          fi
+          printf '%s' "$SBODY" | jq -c '{slug, canWrite, identity, expiresAt}'
+          if [ "$(printf '%s' "$SBODY" | jq -r '.identity // empty')" = "" ]; then
+            echo "::error::identity = null — сессия не паспортная, режим не имеет смысла."
+            exit 1
+          fi
+
+          case "$MODE" in
+            probe)
+              echo "probe: паспортная личность подтверждена хранилищем"
+              ;;
+
+            list)
+              # Имена ключей печатаем, значения — нет: список имён обязателен для
+              # строки канона и приёмки (KARMAN_ROOM.md), значения не нужны никому.
+              RC=0
+              LS="$(curl -s "${VAULT_BASE_URL%/}/api/secrets" -H "Authorization: Bearer $TOKEN" \
+                --connect-timeout 5 --max-time 20 -w '\n%{http_code}')" || RC=$?
+              if [ "$RC" != 0 ]; then echo "::error::GET /api/secrets недосягаем (curl rc=$RC)."; exit 1; fi
+              LCODE="$(printf '%s' "$LS" | tail -n1)"
+              LBODY="$(printf '%s' "$LS" | sed '$d')"
+              if [ "$LCODE" != "200" ]; then
+                LMSG="$(errmsg "$LBODY")"
+                echo "::error::GET /api/secrets -> ${LCODE}${LMSG:+: $LMSG}"
+                exit 1
+              fi
+              COUNT="$(printf '%s' "$LBODY" | jq -r '.secrets | length')"
+              echo "list: ключей в комнате — $COUNT"
+              printf '%s' "$LBODY" | jq -r '.secrets | keys[]'
+              ;;
+
+            portmap)
+              RW="$(printf '%s' "$SBODY" | jq -r '.canWrite')"
+              if [ "$RW" != "true" ]; then
+                echo "::error::паспорт без права записи (canWrite=$RW) — право меняется только пересозданием личности."
+                exit 1
+              fi
+              # Карта — в переменную, не в файл и не в лог: записываем её тем же
+              # шагом, где получили. Скрипт уходит на бокс файлом (D-046), читает
+              # только своё (systemctl/ss/proc) и печатает ровно один JSON.
+              q_service=$(printf '%q' "$SERVICE")
+              RC=0
+              MAP="$(ssh -p "$SSH_PORT" "$TARGET" "bash -s -- $q_service" < deploy/remote-portmap.sh 2>/dev/null)" || RC=$?
+              if [ "$RC" = "255" ]; then
+                echo "::error::ssh не соединился с боксом (код 255); детали в публичный лог не печатаем."
+                exit 1
+              fi
+              if [ "$RC" != 0 ]; then
+                echo "::error::снимок карты не снялся (код $RC) — в комнату ничего не пишем."
+                exit 1
+              fi
+              if ! printf '%s' "$MAP" | jq -e 'type == "object" and length > 0' >/dev/null 2>&1; then
+                # Само значение не печатаем: это карта портов.
+                echo "::error::снимок не распознан как непустой JSON-объект — запись отменена."
+                exit 1
+              fi
+              echo "::add-mask::$MAP"
+              PORTS="$(printf '%s' "$MAP" | jq -r 'length')"
+
+              RC=0
+              W="$(curl -s -X POST "${VAULT_BASE_URL%/}/api/secrets" \
+                -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+                -d "$(jq -cn --arg v "$MAP" '{secrets:{PORT_MAP:$v}}')" \
+                --connect-timeout 5 --max-time 20 -w '\n%{http_code}')" || RC=$?
+              if [ "$RC" != 0 ]; then echo "::error::POST /api/secrets недосягаем (curl rc=$RC)."; exit 1; fi
+              WCODE="$(printf '%s' "$W" | tail -n1)"
+              WBODY="$(printf '%s' "$W" | sed '$d')"
+              if [ "$WCODE" != "200" ] && [ "$WCODE" != "201" ]; then
+                WMSG="$(errmsg "$WBODY")"
+                echo "::error::POST /api/secrets -> ${WCODE}${WMSG:+: $WMSG}"
+                exit 1
+              fi
+
+              # Обратное чтение с перечислением ожидаемого: промах ключа даёт 404 с
+              # именами (G331). Плюс сверяем значение байт-в-байт: отставшее зеркало
+              # хуже отсутствующего, а увидеть расхождение можно только сверкой.
+              RC=0
+              R="$(curl -s "${VAULT_BASE_URL%/}/api/secrets?key=PORT_MAP" -H "Authorization: Bearer $TOKEN" \
+                --connect-timeout 5 --max-time 20 -w '\n%{http_code}')" || RC=$?
+              if [ "$RC" != 0 ]; then echo "::error::обратное чтение не удалось (curl rc=$RC)."; exit 1; fi
+              RCODE="$(printf '%s' "$R" | tail -n1)"
+              RBODY="$(printf '%s' "$R" | sed '$d')"
+              if [ "$RCODE" != "200" ]; then
+                RMSG="$(errmsg "$RBODY")"
+                echo "::error::GET /api/secrets?key=PORT_MAP -> ${RCODE}${RMSG:+: $RMSG}"
+                exit 1
+              fi
+              BACK="$(printf '%s' "$RBODY" | jq -r '.secrets.PORT_MAP // empty')"
+              if [ "$BACK" != "$MAP" ]; then
+                echo "::error::записанное не совпало со снятым — значение в лог не печатаем."
+                exit 1
+              fi
+
+              # Наружу — только счётчики по меткам: портов, адресов и имён жильцов
+              # в логе публичного прогона не появляется.
+              echo "portmap: PORT_MAP записан и сверен ($PORTS портов)"
+              printf '%s' "$MAP" | jq -r '[.[] | if startswith("сосед-") then "сосед" else . end] | group_by(.) | map("\(.[0]) \(length)") | join(", ")'
+              ;;
+
+            *)
+              echo "::error::неизвестный режим '$MODE'"
+              exit 1
+              ;;
+          esac
