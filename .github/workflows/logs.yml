@@ -85,6 +85,8 @@ jobs:
         # Значения подставляются через printf %q: ssh склеивает аргументы
         # пробелами, и шаблон поиска с `|` или пробелом без экранирования
         # развалил бы команду на пути (или увёл её в чужую команду).
+        # Имя ssh-пользователя (левая часть TARGET) уходит значением редакции:
+        # поиск по ВСЕМУ журналу иначе печатает его в sudo-записях.
         run: |
           case "$SINCE$UNTIL$GREP" in
             *$'\n'*|*$'\t'*)
@@ -97,9 +99,10 @@ jobs:
           q_since=$(printf '%q' "$SINCE")
           q_until=$(printf '%q' "$UNTIL")
           q_grep=$(printf '%q' "$GREP")
+          q_user=$(printf '%q' "${TARGET%%@*}")
           set +e
           ssh -p "$SSH_PORT" "$TARGET" \
-            "bash -s -- $q_service $q_lines --since=$q_since --until=$q_until --grep=$q_grep" \
+            "bash -s -- $q_service $q_lines --since=$q_since --until=$q_until --grep=$q_grep --redact-user=$q_user" \
             < deploy/remote-logs.sh 2>/dev/null
           rc=$?
           set -e
