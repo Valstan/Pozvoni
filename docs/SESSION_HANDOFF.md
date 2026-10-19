@@ -163,8 +163,9 @@ GitHub OIDC, claim `repository_id`, комната `pozvoni`, `can_write`). Вр
 `${!ARR[@]+"${!ARR[@]}"}` — bash читает её как косвенное раскрытие значений. Разбор —
 `docs/sessions/2026-10-19-karman-room-passport.md`.
 **Updated:** 2026-10-19
-**Branch:** main после merge PR #183 и #184 этой сессии (комната, карта портов, канон,
-письма); вопрос о лимите Телефона — в следующем PR этой же сессии
+**Branch:** main после merge PR #183–#186 этой сессии (комната, карта портов, канон, письма,
+лимит Телефона, уточнение к канону); ответ brain прочитан с GitHub — локальной копии письма
+в `../brain_matrica/mailboxes/Pozvoni/from-brain/` не было (объединение каналов, шаг 3 старта)
 
 ## PENDING — будильник (правило #152)
 
@@ -173,6 +174,10 @@ GitHub OIDC, claim `repository_id`, комната `pozvoni`, `can_write`). Вр
   catch-all с `return 444` (`listen 80 default_server; server_name _;`). Ждём
   строку brain «Сабантуй снял»; если к **22.10** строки нет — черкнуть brain
   (он дожмёт), вслепую не ставить — дубль `default_server` валит `nginx -t`.
+  **Ответ brain 19.10 (прочитан 20.10 с GitHub, локальной копии письма не было):
+  вариант А согласован, директива Сабантую ушла тем же проходом, дедлайн у него тот же
+  23.10; со нашей стороны — строка-ack отправлена
+  (`mailbox/to-brain/2026-10-20-ack-variant-a-and-room-closed.md`).**
   Приёмка и строка к 23.10: `nginx -t` ок; `default_server` на :80 один и наш;
   чужой Host → 444 (curl без тела); свои имена 200 со своими маркерами. После
   приёмки — перевести `deploy/nginx.conf.example` в активный catch-all (пример
