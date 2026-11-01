@@ -62,27 +62,20 @@ for base in $URLS; do
     printf '· /sitemap.xml: %s\n' "$rc"
   fi
 
-  # главная: meta robots + X-Robots-Tag
-  rc=$(code_of "$base/")
-  if [ "$rc" = "200" ]; then
-    meta=$(grep -o -i '<meta[^>]*name="robots"[^>]*>' "$tmp" | head -n 3 | tr '\n' ' ')
-    [ -n "$meta" ] || meta='нет'
-    xrt=$(header_of "$base/" 'X-Robots-Tag')
-    [ -n "$xrt" ] || xrt='нет'
-    printf '· главная: %s, meta robots: %s, X-Robots-Tag: %s\n' "$rc" "$meta" "$xrt"
-  else
-    printf '· главная: %s\n' "$rc"
-  fi
-
-  # справочник — вторая публичная страница, по ней видно, что индексируется не только корень
-  rc=$(code_of "$base/nomera")
-  if [ "$rc" = "200" ]; then
-    meta=$(grep -o -i '<meta[^>]*name="robots"[^>]*>' "$tmp" | head -n 3 | tr '\n' ' ')
-    [ -n "$meta" ] || meta='нет'
-    printf '· /nomera: %s, meta robots: %s\n' "$rc" "$meta"
-  else
-    printf '· /nomera: %s\n' "$rc"
-  fi
+  # Публичные страницы из sitemap.ts: по ним видно, что индексируется не только корень,
+  # и не осталось ли noindex там, где страница обещана картой сайта.
+  for page in / /nomera /pravila; do
+    rc=$(code_of "$base$page")
+    if [ "$rc" = "200" ]; then
+      meta=$(grep -o -i '<meta[^>]*name="robots"[^>]*>' "$tmp" | head -n 3 | tr '\n' ' ')
+      [ -n "$meta" ] || meta='нет'
+      xrt=$(header_of "$base$page" 'X-Robots-Tag')
+      [ -n "$xrt" ] || xrt='нет'
+      printf '· %s: %s, meta robots: %s, X-Robots-Tag: %s\n' "$page" "$rc" "$meta" "$xrt"
+    else
+      printf '· %s: %s\n' "$page" "$rc"
+    fi
+  done
 
   # favicon: и корневой .ico (его ждёт Вебмастер), и наш svg
   rc=$(code_of "$base/favicon.ico")
