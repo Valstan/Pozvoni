@@ -21,7 +21,10 @@ export async function generateMetadata(): Promise<Metadata> {
     // `siteCanonical` (см. главную, /nomera, /kontakty, /dannye).
     // Иконка для «добавить на домашний экран» у Apple: PNG 192 из public/icons
     // (сгенерированы из app/icon.svg через sharp). Манифест — app/manifest.ts.
-    icons: { apple: "/icons/icon-192.png" },
+    // `icon` перечислен явно: /favicon.ico — файл `app/favicon.ico`, его ищет Яндекс
+    // Вебмастер («файл favicon не найден», письмо brain 2026-10-22), а /icon.svg —
+    // та же иконка в векторе для браузеров, которые её предпочитают.
+    icons: { icon: ["/favicon.ico", "/icon.svg"], apple: "/icons/icon-192.png" },
     appleWebApp: { capable: true, title: "Позвони", statusBarStyle: "default" },
     // Глобальный noindex убран 2026-09-29: сайт работает открыто, главная и справочник
     // должны быть в индексе. Страницы с личными данными (/zapis, /poezdki, /kabinet,
