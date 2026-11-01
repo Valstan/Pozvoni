@@ -437,7 +437,7 @@ if [ "$UNPROBEABLE" -gt 0 ]; then
   echo "· имён соседа, которые не пробуем (шаблон/юникод): $UNPROBEABLE"
 fi
 echo "· nginx -t: $([ "$nginx_t_ok" = yes ] && echo ок || echo КРАСНЫЙ)"
-NGINX_VER=$(sudo nginx -v 2>&1 | sed -n 's#^nginx/\([0-9.]*\).*#\1#p')
+NGINX_VER=$(sudo nginx -v 2>&1 | sed -n 's#.*nginx/\([0-9.]*\).*#\1#p' | head -n 1)
 echo "· nginx: ${NGINX_VER:-неизвестна}"
 echo "· default_server в нашей секции: нет (нужен только чужой — ловим regex-именем)"
 echo "· чужой Host: $([ "$foreign_closed" = yes ] && echo "закрыто без ответа (curl rc $foreign_rc2) — 444 работает" || echo "http-код $foreign_code2 (curl rc $foreign_rc2) — 444 не срабатывает")"
