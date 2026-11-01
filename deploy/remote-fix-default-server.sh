@@ -15,9 +15,10 @@
 # конфиге и откатывается, если regex не сработал.
 #
 # Риск, который проверяется ДО правки: если сайт соседа обслуживается его
-# catch-all'ом (`server_name _` и в блоке есть root/proxy_pass), а явных имён у
-# этого блока нет, наш regex перехватит и домены соседа. Тогда apply ничего не
-# меняет (BLOCKED_NEIGHBOUR): соседу нужно добавить явное имя в свой блок.
+# catch-all'ом (`server_name _` и в блоке есть root/proxy_pass), а явных имён
+# нет ни в одном чужом блоке, наш regex перехватит и домены соседа. Тогда apply
+# ничего не меняет (BLOCKED_NEIGHBOUR): соседу нужно добавить явное имя в свой
+# блок.
 #
 # Режимы:
 #   check — только чтение: состояние, факты о чужих default-блоках (счётчики,
@@ -148,14 +149,22 @@ if [ "$MARKERS" = "1" ]; then
 fi
 
 # ── Разбор чужих секций: счётчики, без имён и путей ──────────────────────────────────
-# Печатает для каждого server-блока с default_server:
-#   BLOCK default=1 explicit=<явные имена> content=<root|alias|proxy_pass|try_files> lines=<listen-строк>
+# Одна строка на файл:
+#   FILE blocks=… default_blocks=… default_explicit=… default_content=…
+#        explicit_blocks=… default_lines=…
+# explicit_blocks — блоки хоть с одним явным server_name (не `_`): если они есть,
+# у соседа есть своё имя, и наш regex не забирает его домены.
 facts_of() {
   sudo awk '
     function flush() {
+      blocks++
       if (hasdef) {
-        printf "BLOCK default=1 explicit=%d content=%d lines=%d\n", nnames, hascontent, deflines
+        dblocks++
+        dlines += deflines
+        if (hascontent) dcontent++
+        if (nnames > 0) dexplicit++
       }
+      if (nnames > 0) explicit_blocks++
       hasdef = 0; hascontent = 0; nnames = 0; deflines = 0
       split("", names)
     }
@@ -188,7 +197,11 @@ facts_of() {
         if (depth <= 0) { flush(); inblk = 0 }
       }
     }
-    END { if (inblk) flush() }
+    END {
+      if (inblk) flush()
+      printf "FILE blocks=%d default_blocks=%d default_explicit=%d default_content=%d explicit_blocks=%d default_lines=%d\n", \
+        blocks, dblocks, dexplicit, dcontent, explicit_blocks, dlines
+    }
   ' "$1"
 }
 
@@ -220,6 +233,7 @@ is_probe_name() {
 DEFAULT_BLOCKS=0
 DEFAULT_EXPLICIT=0
 DEFAULT_CONTENT=0
+EXPLICIT_BLOCKS=0
 INCLUDE=no
 UNSAFE=no
 PARSER_BAD=no
@@ -236,27 +250,24 @@ for f in "${FOREIGN[@]}"; do
   listen_lines=$(sudo grep -cE '^[[:space:]]*listen[^;]*default_server' "$f" 2>/dev/null || true)
   [ -n "$listen_lines" ] || listen_lines=0
 
-  found_lines=0
-  while IFS= read -r line; do
-    case "$line" in
-      BLOCK\ default=1*)
-        DEFAULT_BLOCKS=$((DEFAULT_BLOCKS + 1))
-        ex=$(printf '%s\n' "$line" | sed -n 's/.*explicit=\([0-9]*\).*/\1/p')
-        co=$(printf '%s\n' "$line" | sed -n 's/.*content=\([0-9]*\).*/\1/p')
-        ln=$(printf '%s\n' "$line" | sed -n 's/.*lines=\([0-9]*\).*/\1/p')
-        [ -n "$ex" ] || ex=0
-        [ -n "$co" ] || co=0
-        [ -n "$ln" ] || ln=0
-        found_lines=$((found_lines + ln))
-        if [ "$ex" -gt 0 ]; then DEFAULT_EXPLICIT=$((DEFAULT_EXPLICIT + 1)); fi
-        if [ "$co" -gt 0 ]; then DEFAULT_CONTENT=$((DEFAULT_CONTENT + 1)); fi
-        # Сайт соседа на catch-all без явного имени: наш regex заберёт и его.
-        if [ "$ex" -eq 0 ] && [ "$co" -gt 0 ]; then UNSAFE=yes; fi
-        ;;
-    esac
-  done < <(facts_of "$f")
+  facts=$(facts_of "$f")
+  dblocks=$(printf '%s\n' "$facts" | sed -n 's/.*default_blocks=\([0-9]*\).*/\1/p')
+  dexpl=$(printf '%s\n' "$facts" | sed -n 's/.*default_explicit=\([0-9]*\).*/\1/p')
+  dcont=$(printf '%s\n' "$facts" | sed -n 's/.*default_content=\([0-9]*\).*/\1/p')
+  expl=$(printf '%s\n' "$facts" | sed -n 's/.*explicit_blocks=\([0-9]*\).*/\1/p')
+  dlines=$(printf '%s\n' "$facts" | sed -n 's/.*default_lines=\([0-9]*\).*/\1/p')
+  [ -n "$dblocks" ] || dblocks=0
+  [ -n "$dexpl" ] || dexpl=0
+  [ -n "$dcont" ] || dcont=0
+  [ -n "$expl" ] || expl=0
+  [ -n "$dlines" ] || dlines=0
 
-  if [ "$found_lines" != "$listen_lines" ]; then PARSER_BAD=yes; fi
+  DEFAULT_BLOCKS=$((DEFAULT_BLOCKS + dblocks))
+  DEFAULT_EXPLICIT=$((DEFAULT_EXPLICIT + dexpl))
+  DEFAULT_CONTENT=$((DEFAULT_CONTENT + dcont))
+  EXPLICIT_BLOCKS=$((EXPLICIT_BLOCKS + expl))
+
+  if [ "$dlines" != "$listen_lines" ]; then PARSER_BAD=yes; fi
 
   while IFS= read -r nm; do
     [ -n "$nm" ] || continue
@@ -270,6 +281,11 @@ for f in "${FOREIGN[@]}"; do
     fi
   done < <(all_names_of "$f")
 done
+
+# Сайт соседа на catch-all без единого явного имени: наш regex заберёт и его
+# домены. Если явные имена есть хоть где-то в чужих файлах — они и обслуживают
+# свой сайт, а неизвестные имена ему не принадлежат.
+if [ "$DEFAULT_CONTENT" -gt 0 ] && [ "$EXPLICIT_BLOCKS" -eq 0 ]; then UNSAFE=yes; fi
 
 # ── Пробы ────────────────────────────────────────────────────────────────────────────
 # Чужой Host: без нашего catch-all его получает default-сервер соседа (200),
@@ -308,7 +324,7 @@ if [ "$MODE" = "apply" ] && [ "$INCLUDE" = "yes" ]; then
   exit 1
 fi
 if [ "$MODE" = "apply" ] && [ "$MARKERS" = "0" ] && [ "$UNSAFE" = "yes" ]; then
-  echo "сайт соседа живёт на catch-all без явного имени: наш regex забрал бы и его домены"
+  echo "у соседа нет ни одного явного server_name, а catch-all отдаёт контент: наш regex заберёт и его домены"
   echo "нужно, чтобы сосед добавил явное server_name в свой блок; ничего не меняю"
   echo "RESULT: BLOCKED_NEIGHBOUR"
   exit 3
@@ -399,7 +415,7 @@ else
   echo "· наш catch-all 444: не стоит"
 fi
 echo "· чужих файлов с default_server: ${#FOREIGN[@]}"
-echo "· default-блоков: $DEFAULT_BLOCKS (явных имён: $DEFAULT_EXPLICIT, с контентом: $DEFAULT_CONTENT)"
+echo "· чужие блоки: с явными именами — $EXPLICIT_BLOCKS; default-блоков — $DEFAULT_BLOCKS (из них с явными именами: $DEFAULT_EXPLICIT, с контентом: $DEFAULT_CONTENT)"
 echo "· include в чужом конфиге: $INCLUDE"
 if [ "$UNPROBEABLE" -gt 0 ]; then
   echo "· имён соседа, которые не пробуем (шаблон/юникод): $UNPROBEABLE"

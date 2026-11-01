@@ -127,7 +127,19 @@ server {
 CONF
       ;;
     unsafe)
-      # Сайт соседа на catch-all: явных имён у блока нет.
+      # Сайт соседа на catch-all: явных имён нет ни в одном блоке.
+      cat > "$NEIGHBOUR" <<'CONF'
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    root /srv/neighbour;
+}
+CONF
+      ;;
+    fallback)
+      # Catch-all с контентом — запасной, а сайт соседа обслуживает блок с
+      # явным именем: наш regex его не заберёт.
       cat > "$NEIGHBOUR" <<'CONF'
 server {
     listen 80 default_server;
@@ -137,7 +149,7 @@ server {
 }
 server {
     listen 80;
-    server_name n2.example;
+    server_name n1.example;
     root /srv/neighbour;
 }
 CONF
@@ -186,13 +198,18 @@ expect_out "RESULT: READY_TO_APPLY"
 [ "$(markers)" = "0" ] || fail "check изменил конфиг"
 [ -z "$(ls "$T"/etc/nginx/conf.d/*.bak-* 2>/dev/null || true)" ] || fail "check сделал бэкап"
 
-# 2. сайт соседа на catch-all → apply ничего не трогает.
+# 2. сайт соседа только на catch-all → apply ничего не трогает.
 reset_conf unsafe
 set +e; OUT=$(run no apply); rc=$?; set -e
 expect_out "RESULT: BLOCKED_NEIGHBOUR"
 [ "$rc" = "3" ] || fail "ожидался код 3, получен $rc"
 [ "$(markers)" = "0" ] || fail "apply изменил конфиг при UNSAFE"
 [ -z "$(ls "$T"/etc/nginx/conf.d/*.bak-* 2>/dev/null || true)" ] || fail "apply сделал бэкап при UNSAFE"
+
+# 2b. catch-all с контентом, но явное имя у соседа есть → правка безопасна.
+reset_conf fallback
+OUT=$(run no check) || fail "check fallback вернул ошибку ($?)"
+expect_out "RESULT: READY_TO_APPLY"
 
 # 3. include в чужом файле → человеку.
 reset_conf include
@@ -235,4 +252,4 @@ expect_out "RESULT: FAILED"
 cmp -s "$OURS" "$T/ours.before" || fail "при регрессии имён соседа конфиг не откатился"
 [ "$(markers)" = "0" ] || fail "после отката маркер остался"
 
-echo "default-server: ок (7 случаев: предохранители, идемпотентность, откаты)"
+echo "default-server: ок (8 случаев: предохранители, идемпотентность, откаты)"
