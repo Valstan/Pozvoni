@@ -225,7 +225,9 @@ case "$foreign_rc" in
   52|56) foreign_closed=yes ;;
 esac
 
-echo "· наша секция: $CONF"
+# Имя файла, а не путь: логи прогонов публичны, а путь на боксе — recon-деталь того же
+# класса, что хост и порт (AGENTS.md, D-038). Для разбора хватает и basename.
+echo "· наша секция: $(basename "$CONF")"
 if [ "$MARKERS" = "2" ]; then
   echo "· наш catch-all 444: стоит"
 else
