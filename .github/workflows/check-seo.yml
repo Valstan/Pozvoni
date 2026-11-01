@@ -1,0 +1,63 @@
+name: check-seo
+
+# Проверка того, что поисковик видит с бокса (письмо brain 2026-10-22): robots.txt,
+# sitemap.xml, <meta name="robots"> публичных страниц и наличие /favicon.ico.
+# Только ручной запуск: читает ответы прода и ничего не меняет.
+#
+# Зачем с бокса, а не с рабочей машины: локальный DNS до прод-доменов не резолвится
+# с 30.09 (curl rc 6 при живом GitHub), а из CI-раннера GitHub видно ровно то же,
+# что видит Яндекс. Отдельный workflow, а не шаг в deploy: это не «релиз поднялся?»,
+# а индексация, и красный deploy из-за SEO никто не хочет.
+#
+# Все адреса, порты и пути приходят СЕКРЕТАМИ, не через vars (AGENTS.md, D-038).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: check-seo
+  cancel-in-progress: false
+
+jobs:
+  check-seo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Ключ доступа
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$HOSTS" > ~/.ssh/known_hosts
+
+      - name: Что видит поисковик
+        env:
+          TARGET: ${{ secrets.DEPLOY_TARGET }}
+          SSH_PORT: ${{ secrets.DEPLOY_SSH_PORT }}
+          SMOKE_URL: ${{ secrets.DEPLOY_SMOKE_URL }}
+        # Скрипт уходит файлом на stdin, а не сочиняется здесь строкой (мандат D-046).
+        # stderr клиента ssh заглушён: при отказе он печатает хост и порт отдельными
+        # словами, а маскировка GitHub ловит только полное значение секрета.
+        run: |
+          set +e
+          ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$SMOKE_URL" \
+            < deploy/remote-check-seo.sh 2>/dev/null
+          rc=$?
+          set -e
+          if [ "$rc" = "255" ]; then
+            echo "ssh не соединился с боксом (код 255); детали в публичный лог не печатаем"
+          fi
+          exit "$rc"
