@@ -22,7 +22,9 @@ SERVICE="${3:?не задано имя службы}"
 INCOMING="$APP_DIR/incoming.tar.gz"
 TARGET="$APP_DIR/releases/$RELEASE"
 
-test -f "$INCOMING" || { echo "нет пакета $INCOMING"; exit 1; }
+# Путь не печатаем — только имя файла: логи прогонов публичны, а путь на боксе это
+# recon-деталь того же класса, что хост и порт (AGENTS.md, D-038).
+test -f "$INCOMING" || { echo "нет пакета $(basename "$INCOMING")"; exit 1; }
 
 mkdir -p "$TARGET"
 tar -xzf "$INCOMING" -C "$TARGET"
