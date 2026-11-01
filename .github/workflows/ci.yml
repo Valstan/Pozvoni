@@ -81,6 +81,12 @@ jobs:
         # нумерации соседей между прогонами (#125).
         run: bash deploy/tests/portmap-logic.test.sh
 
+      - name: Логика catch-all 444
+        # Цена ошибки — чужой сайт у соседа или красный `nginx -t` у всех жильцов
+        # бокса. Предохранители, идемпотентность и оба отката проверяются здесь,
+        # на подставных sudo/nginx/curl, а не после правки на живом конфиге (#125).
+        run: bash deploy/tests/default-server-logic.test.sh
+
       - name: Сборка
         env:
           # Заглушки, не секреты: payload.config исполняется при next build,
