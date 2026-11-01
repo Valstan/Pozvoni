@@ -13,6 +13,8 @@ import { esaLinkAllowed } from "../lib/esa-link-rule.ts";
 import { Users } from "../collections/Users.ts";
 import { limited, rateLimitSize } from "../lib/rate-limit.ts";
 import { isOwnCard } from "../lib/rating-self-vote.ts";
+import { judgeOrigin } from "../lib/request-origin.ts";
+import { SITES } from "../lib/sites.ts";
 
 let failed = 0;
 const ok = (m) => console.log(`✓ ${m}`);
@@ -164,6 +166,69 @@ eq(own.has("/api/[...slug]"), true, "сборка: catch-all Payload на мес
   eq(isOwnCard(7, undefined), false, "звёзды: без сессии — не самооценка");
   eq(isOwnCard(null, 7), false, "звёзды: без владельца решает гейт кабинета, а не это правило");
   eq(isOwnCard(7, {}), false, "звёзды: пустой id сессии — не самооценка");
+}
+
+// ── 8. Чужая страница не пишет от имени вошедшего ───────────────────────────────────────
+// Та же беда, что с предикатами выше: правило, размазанное по прокси, не проверить
+// таблицей. Поэтому `judgeOrigin` — чистая функция, а здесь её гоняют случаями. Главный из
+// них — сосед по `вмалмыже.рф`: его `Origin` не наш, и запрос обязан получить отказ, хотя
+// кука браузером будет приложена (он same-site).
+//
+// Что НЕ проверяется: реальное поведение браузера (приложит ли он куку и `Origin`) — это
+// измеряется живой попыткой, а не таблицей. Здесь проверяется наше решение.
+
+{
+  const live = SITES.filter((s) => s.live);
+  const root = live[0];
+  const sibling = live[1];
+  const planned = SITES.find((s) => !s.live);
+  const zone = root.host.split(".").slice(-2).join(".");
+  const base = { method: "POST", fetchSite: null, host: root.host, production: true };
+
+  eq(judgeOrigin({ ...base, method: "GET", origin: `https://evil.${zone}` }).allowed, true,
+    "origin: чтение не проверяем (иначе встанут переходы)");
+  eq(judgeOrigin({ ...base, method: "HEAD", origin: `https://evil.${zone}` }).allowed, true,
+    "origin: HEAD не проверяем");
+  eq(judgeOrigin({ ...base, origin: null }).allowed, true,
+    "origin: без Origin и без Sec-Fetch-Site пускаем (curl, проба, смоук)");
+  eq(judgeOrigin({ ...base, origin: null, fetchSite: "same-origin" }).allowed, true,
+    "origin: старый браузер без Origin, но сам сказал same-origin — пускаем");
+  eq(judgeOrigin({ ...base, origin: null, fetchSite: "cross-site" }).allowed, false,
+    "origin: без Origin, но браузер сказал cross-site — отказ");
+  eq(judgeOrigin({ ...base, origin: null, fetchSite: "same-site" }).allowed, false,
+    "origin: без Origin, но браузер сказал same-site — отказ");
+
+  eq(judgeOrigin({ ...base, origin: `https://${root.host}` }).allowed, true,
+    "origin: свой же адрес — same-origin");
+  eq(judgeOrigin({ ...base, origin: `https://${root.host.toUpperCase()}` }).allowed, true,
+    "origin: регистр в Origin не обманывает сравнение");
+  eq(judgeOrigin({ ...base, origin: `http://localhost:3000`, host: `localhost:3000` }).allowed, true,
+    "origin: dev на localhost — same-origin по Host");
+
+  if (sibling) {
+    eq(judgeOrigin({ ...base, origin: `https://${sibling.host}` }).allowed, true,
+      "origin: соседнее живое лицо матрёшки — свои");
+  }
+  if (planned) {
+    eq(judgeOrigin({ ...base, origin: `https://${planned.host}` }).allowed, false,
+      "origin: домен из реестра, но не живой — отказ (нет ни DNS, ни сертификата)");
+  }
+
+  eq(judgeOrigin({ ...base, origin: `https://sabantuy.${zone}` }).allowed, false,
+    "origin: сосед по зоне (same-site, кука уйдёт) — отказ");
+  eq(judgeOrigin({ ...base, origin: `https://${root.host.replace(/^[^.]+\./, "злой.")}` }).allowed, false,
+    "origin: чужое лицо зоны — отказ");
+  eq(judgeOrigin({ ...base, origin: "null" }).allowed, false,
+    "origin: `null` из sandbox-iframe — отказ");
+  eq(judgeOrigin({ ...base, origin: "не-url" }).allowed, false,
+    "origin: неразбираемый Origin — отказ");
+  eq(judgeOrigin({ ...base, origin: "file:///etc/passwd" }).allowed, false,
+    "origin: не-http схема — отказ");
+
+  eq(judgeOrigin({ ...base, production: false, origin: "http://localhost:3001", host: "127.0.0.1:3000" }).allowed,
+    true, "origin: dev — loopback любого порта");
+  eq(judgeOrigin({ ...base, production: true, origin: "http://localhost:3001", host: "127.0.0.1:3000" }).allowed,
+    false, "origin: на проде loopback не своё");
 }
 
 if (failed > 0) {
