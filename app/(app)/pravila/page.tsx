@@ -19,7 +19,10 @@ import {
 
 export const metadata: Metadata = {
   title: "Правила комментариев — ПОЗВОНИ",
-  robots: { index: false, follow: false },
+  // Индексируем: это публичные правила, а не данные человека — страница уже стоит в
+  // sitemap, а noindex делал карту сайта противоречивой (Яндекс ругается на такое,
+  // письмо brain 2026-10-22). Служебные страницы (/zapis, /poezdki, /kabinet, /t/*,
+  // /admin, /api/*) свой noindex сохраняют.
 };
 
 export default function PravilaPage() {
