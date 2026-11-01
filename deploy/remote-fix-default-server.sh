@@ -379,6 +379,12 @@ BLOCK
     exit 1
   fi
   echo "· блок внесён, nginx перезагружен"
+  # reload отдаёт управление раньше, чем старые воркеры перестают принимать
+  # новые соединения: без паузы проба может попасть в воркер со старым конфигом
+  # и увидеть 200. Секунда — не «подождать, пока заработает», а развести два
+  # поколения воркеров; если regex не сработал по-настоящему, повтор ниже это
+  # покажет и правка откатится.
+  sleep 1
 fi
 
 # ── Итоговое состояние ──────────────────────────────────────────────────────────────
@@ -386,10 +392,20 @@ nginx_t_ok=no
 if sudo nginx -t >/dev/null 2>&1; then nginx_t_ok=yes; fi
 
 # Перепроверяем после reload: не сработал ли наш regex и не пострадали ли имена
-# соседа (у нас их явный список до правки).
-foreign_rc2=0
-foreign_code2=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
-  -H 'Host: probe-unknown.invalid' http://127.0.0.1/ 2>/dev/null) || foreign_rc2=$?
+# соседа (у нас их явный список до правки). Один повтор через 2 с — на случай,
+# если первый запрос ещё застал старое поколение воркеров.
+probe_unknown() {
+  UNKNOWN_RC=0
+  UNKNOWN_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    -H 'Host: probe-unknown.invalid' http://127.0.0.1/ 2>/dev/null) || UNKNOWN_RC=$?
+}
+probe_unknown
+case "$UNKNOWN_RC" in
+  52|56) ;;
+  *) sleep 2; probe_unknown ;;
+esac
+foreign_rc2=$UNKNOWN_RC
+foreign_code2=$UNKNOWN_CODE
 foreign_closed=no
 case "$foreign_rc2" in
   52|56) foreign_closed=yes ;;
@@ -421,6 +437,8 @@ if [ "$UNPROBEABLE" -gt 0 ]; then
   echo "· имён соседа, которые не пробуем (шаблон/юникод): $UNPROBEABLE"
 fi
 echo "· nginx -t: $([ "$nginx_t_ok" = yes ] && echo ок || echo КРАСНЫЙ)"
+NGINX_VER=$(sudo nginx -v 2>&1 | sed -n 's#^nginx/\([0-9.]*\).*#\1#p')
+echo "· nginx: ${NGINX_VER:-неизвестна}"
 echo "· default_server в нашей секции: нет (нужен только чужой — ловим regex-именем)"
 echo "· чужой Host: $([ "$foreign_closed" = yes ] && echo "закрыто без ответа (curl rc $foreign_rc2) — 444 работает" || echo "http-код $foreign_code2 (curl rc $foreign_rc2) — 444 не срабатывает")"
 echo "· наши имена: $our_ok из $our_total — 200"
