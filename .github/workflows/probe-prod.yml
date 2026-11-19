@@ -109,7 +109,7 @@ jobs:
           while : ; do
             set +e
             ssh -p "$SSH_PORT" "$TARGET" bash -s -- "$APP_DIR" "$APP_PORT" "$SLUGS" "$SMOKE_URL" \
-              < deploy/remote-probe.sh 2>/dev/null
+              < <(cat deploy/lib/version-check.sh deploy/remote-probe.sh) 2>/dev/null
             rc=$?
             set -e
             if [ "$rc" = "0" ]; then
