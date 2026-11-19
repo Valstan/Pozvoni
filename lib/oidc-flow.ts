@@ -5,6 +5,7 @@
 // ездить с каждым запросом к сайту.
 
 import { publicOrigin } from "./oidc";
+import { safeNext } from "./safe-next";
 
 export const FLOW_COOKIE = "oidc-flow";
 
@@ -19,11 +20,9 @@ export interface FlowState {
   next?: string;
 }
 
-/** Путь для возврата: относительный, без схемы и хоста — чтобы не стать открытым редиректом. */
-export function safeNext(raw: string | null | undefined): string | undefined {
-  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.includes("\\")) return undefined;
-  return raw.length > 512 ? undefined : raw;
-}
+/** Путь для возврата: относительный, без схемы и хоста — чтобы не стать открытым редиректом.
+ *  Правило живёт в `lib/safe-next.ts`: там нет ни одного импорта, поэтому его можно
+ *  проверять гейтом `check:authz` обычным node. */
 
 const FLOW_TTL_SECONDS = 10 * 60;
 

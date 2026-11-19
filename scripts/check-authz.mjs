@@ -11,10 +11,21 @@
 import { readFileSync } from "node:fs";
 import { esaLinkAllowed } from "../lib/esa-link-rule.ts";
 import { Users } from "../collections/Users.ts";
+import { Entries } from "../collections/Entries.ts";
 import { limited, rateLimitSize } from "../lib/rate-limit.ts";
 import { isOwnCard } from "../lib/rating-self-vote.ts";
 import { judgeOrigin } from "../lib/request-origin.ts";
 import { SITES } from "../lib/sites.ts";
+import { safeNext } from "../lib/safe-next.ts";
+import { acceptablePhone } from "../lib/entry-edits.ts";
+import {
+  clearSessionCookies,
+  SESSION_COOKIE,
+  SESSION_COOKIE_PREFIX,
+  LEGACY_SESSION_COOKIE,
+  SESSION_COOKIE_OPTIONS,
+} from "../lib/session-cookie.ts";
+import { updateOwnCard } from "../lib/market.ts";
 
 let failed = 0;
 const ok = (m) => console.log(`✓ ${m}`);
@@ -229,6 +240,172 @@ eq(own.has("/api/[...slug]"), true, "сборка: catch-all Payload на мес
     true, "origin: dev — loopback любого порта");
   eq(judgeOrigin({ ...base, production: true, origin: "http://localhost:3001", host: "127.0.0.1:3000" }).allowed,
     false, "origin: на проде loopback не своё");
+}
+
+// ── 9. После входа нас отправляют только на свой путь ─────────────────────────────────
+//
+// `next` приходит из адресной строки, то есть целиком подконтролен человеку. Если бы
+// вернули его как есть, вход через ЕСА стал бы открытым редиректом: ссылка вида
+// `/api/auth/oidc/start?next=//чужой.домен` увела бы посетителя с нашего домена на чужой
+// с нашим префиксом доверия. Правило живёт в `safeNext`, и до 19.11 его никто не звал:
+// в таблице путей его не было вовсе, а гейт молчал.
+//
+// Что НЕ проверяется: живой браузер. Проверяется решение — какой путь вообще можно
+// вернуть. Правило разрешает любой путь этого хоста, включая `/api/...`: редирект внутри
+// своего сайта дырой не является.
+
+eq(safeNext("/kabinet"), "/kabinet", "путь возврата: свой путь принимается");
+eq(safeNext("/"), "/", "путь возврата: корень принимается");
+eq(safeNext("/nomera?cat=gos"), "/nomera?cat=gos", "путь возврата: с запросом принимается");
+eq(safeNext("//чужой.домен"), undefined, "путь возврата: протокол-относительный URL — не путь (открытый редирект)");
+eq(safeNext("https://чужой.домен/x"), undefined, "путь возврата: абсолютный URL отвергнут");
+eq(safeNext("http://чужой.домен"), undefined, "путь возврата: абсолютный URL без пути отвергнут");
+eq(safeNext("/\\чужой.домен"), undefined, "путь возврата: обратный слэш отвергнут");
+eq(safeNext("кабинет"), undefined, "путь возврата: без ведущего слэша — не путь");
+eq(safeNext(""), undefined, "путь возврата: пусто — не путь");
+eq(safeNext(null), undefined, "путь возврата: нет параметра — не путь");
+eq(safeNext("/" + "a".repeat(512)), undefined, "путь возврата: длиннее 512 символов отвергнут");
+eq(safeNext("/" + "a".repeat(511)), "/" + "a".repeat(511), "путь возврата: ровно 512 символов принимается");
+
+// Кука прохода входа несёт `state`, `nonce`, PKCE-верификатор и путь возврата — она секрет
+// по содержанию. Атрибуты задаются в `lib/oidc-flow.ts` (`flowCookieOptions`), и **проверить их
+// здесь нельзя**: модуль тянет `publicOrigin`, а тот — `./sites` без расширения, то есть
+// поднимается только сборщиком. Поэтому атрибуты куки прохода названы в `docs/WRITE_AUTHZ.md`
+// как непроверенные гейтом, а не выданы за закрытые.
+
+// ── 10. Номер в очередь правок — это номер ─────────────────────────────────────────────
+//
+// `acceptablePhone` отсекает то, что не является номером, ДО записи в очередь правок
+// (роут `/api/suggest`). Это не фильтр красоты: ключ номера (`phoneKey`) связывает карму,
+// комментарии и рейтинг, и мусорный «номер» в очереди размножил бы связки.
+
+eq(acceptablePhone("+7 (912) 000-00-00"), true, "номер в очередь правок: нормальный номер принимается");
+eq(acceptablePhone("9120000000"), true, "номер в очередь правок: без плюса принимается");
+eq(acceptablePhone("8 912 000-00-00"), true, "номер в очередь правок: с восьмёркой принимается");
+eq(acceptablePhone("1234"), false, "номер в очередь правок: меньше пяти цифр — не номер");
+eq(acceptablePhone("по договору"), false, "номер в очередь правок: не номер");
+eq(acceptablePhone(""), false, "номер в очередь правок: пусто — не номер");
+
+// ── 11. Снятие сессионной куки ──────────────────────────────────────────────────────────
+//
+// Выход и удаление аккаунта снимают куку вручную (в `logout` и `account/delete`).
+// Если снятие перестанет работать, браузер продолжит слать мёртвый токен — и, что хуже,
+// префикс `__Host-` перестанет быть защитой: кука без `Secure` и без `Path=/` браузером
+// не принимается, и сессия «намертво» остаётся в браузере человека.
+//
+// ⚠️ Класс #285: префикс `__Host-` держится на ТРЁХ местах сразу — `cookiePrefix` в
+// `payload.config.ts`, атрибуты в `collections/Users.ts` и эти константы. Сходимость
+// проверяется здесь; правка одного места без другого ломает вход в админку («вошёл —
+// снова форма») без единой ошибки в журнале.
+
+{
+  const setCalls = [];
+  const fakeRes = { cookies: { set: (name, value, opts) => setCalls.push({ name, value, opts }) } };
+  clearSessionCookies(fakeRes);
+  eq(setCalls.length, 2, "снятие куки: обе — новая и старого имени");
+  eq(setCalls[0].name, SESSION_COOKIE, "снятие куки: первой гасится новая");
+  eq(setCalls[1].name, LEGACY_SESSION_COOKIE, "снятие куки: второй гасится старая (до 11.09)");
+  eq(setCalls.every((c) => c.opts.maxAge === 0), true, "снятие куки: maxAge=0 — кука гаснется, а не меняется");
+  eq(setCalls.every((c) => c.value === ""), true, "снятие куки: значение пустое");
+  eq(setCalls.every((c) => c.opts.path === "/"), true, "снятие куки: Path=/ — гасится ровно та, что ставилась");
+  eq(setCalls.every((c) => c.opts.domain === undefined), true, "снятие куки: без Domain");
+  eq(SESSION_COOKIE_PREFIX, "__Host-payload", "префикс сессионной куки: __Host-");
+  eq(SESSION_COOKIE.startsWith("__Host-"), true, "имя сессионной куки несёт префикс __Host-");
+  eq(SESSION_COOKIE_OPTIONS.secure, true, "сессионная кука: Secure всегда");
+  eq(SESSION_COOKIE_OPTIONS.httpOnly, true, "сессионная кука: httpOnly");
+  eq(SESSION_COOKIE_OPTIONS.path, "/", "сессионная кука: Path=/");
+  eq(SESSION_COOKIE_OPTIONS.domain, undefined, "сессионная кука: без Domain — иначе __Host- её не примет");
+}
+
+// ── 12. Правка карточки — только своей, и только разрешённых полей ────────────────────
+//
+// `updateOwnCard` — единственный путь, где владелец меняет карточку сам (роут
+// `/api/cabinet`). Два риска, и оба здесь проверяются: правка ЧУЖОЙ карточки (сверка
+// владельца ДО записи — иначе `overrideAccess: true` в `payload.update` записал бы что
+// угодно) и правка ПОЛЯ, которое владельцу не принадлежит (статус публикации, название).
+
+{
+  const updates = [];
+  const payload = {
+    findByID: async ({ id }) =>
+      id === 7 ? { id: 7, owner: 42 } : id === 8 ? { id: 8, owner: 99 } : null,
+    update: async (args) => {
+      updates.push(args);
+      return { docs: [] };
+    },
+  };
+
+  eq(await updateOwnCard(payload, 42, 7, { description: "  своё описание  " }), true,
+    "правка карточки: владелец своей карточки — можно");
+  eq(updates.length, 1, "правка карточки: запись одна");
+  eq(updates[0].collection, "entries", "правка карточки: пишем в entries");
+  eq(updates[0].id, 7, "правка карточки: та самая карточка");
+  eq(updates[0].data.description, "своё описание", "правка карточки: текст обрезан по краям");
+  eq("status" in updates[0].data, false, "правка карточки: статус публикации не трогаем");
+  eq("name" in updates[0].data, false, "правка карточки: название не трогаем");
+  eq("owner" in updates[0].data, false, "правка карточки: владельца не трогаем");
+
+  eq(await updateOwnCard(payload, 42, 8, { description: "подмена" }), false,
+    "правка карточки: чужая карточка — отказ");
+  eq(updates.length, 1, "правка карточки: чужую карточку не пишем (записи не добавилось)");
+
+  eq(await updateOwnCard(payload, 42, 99, { description: "нет такой" }), false,
+    "правка карточки: несуществующей карточки — отказ");
+  eq(updates.length, 1, "правка карточки: несуществующую тоже не пишем");
+}
+
+// ── 13. Правила доступа коллекции `entries` — самой большой поверхности записи ─────────
+//
+// Справочник — то, ради чего проект существует, и правила записи в нём объявлены
+// ДЕКЛАРАТИВНО, в `collections/Entries.ts`. Такое правило не вызывается из кода: его
+// «зовёт» сам Payload, поэтому правка одной строки (`req.user?.role === "superadmin"` →
+// `req.user`) тихо открыла бы запись в справочник любому посетителю, и ни сборка, ни схема
+// этого не видят. До 19.11 правило проверялось только чтением.
+//
+// ⚠️ Раньше здесь стояло «любой вошедший» — с появлением посетителей (2026-09-02) это была
+// бы дыра. Теперь правило зафиксировано гейтом: визитёр, у которого роль не `superadmin`,
+// пишет в справочник отказано.
+
+{
+  const entries = Entries.access ?? {};
+  const asRole = (role) => ({ req: { user: role === null ? null : { role, id: 5 } } });
+  const roles = [
+    ["superadmin", true],
+    ["user", false],
+    ["editor", false],
+  ];
+
+  for (const key of ["create", "update", "delete"]) {
+    const fn = entries[key];
+    if (typeof fn !== "function") {
+      fail(`entries.access.${key} — не функция`);
+      continue;
+    }
+    for (const [role, want] of roles) {
+      eq(await fn(asRole(role)), want, `entries.${key}: роли ${role} — ${want ? "можно" : "нельзя"}`);
+    }
+    eq(await fn(asRole(null)), false, `entries.${key}: без сессии — нельзя`);
+    eq(await fn({ req: { user: { id: 5 } } }), false, `entries.${key}: сессия без роли — нельзя`);
+    eq(await fn({ req: {} }), false, `entries.${key}: без пользователя — нельзя`);
+  }
+
+  // Чтение — query-constraint, а не фильтр в коде страницы: правило действует и для REST,
+  // и для любого будущего кода. Проверяем РЕЗУЛЬТАТ правила, а не текст: посетителю должен
+  // прийти ровно опубликованное, персоналу — всё.
+  const read = entries.read;
+  if (typeof read !== "function") {
+    fail("entries.access.read — не функция");
+  } else {
+    eq(await read(asRole("superadmin")), true, "entries.read: персоналу — всё");
+    const guest = await read(asRole(null));
+    eq(JSON.stringify(guest), JSON.stringify({ status: { equals: "published" } }),
+      "entries.read: посетителю — только опубликованное");
+    const visitor = await read(asRole("user"));
+    const text = JSON.stringify(visitor);
+    eq(text.includes("published"), true, "entries.read: посетителю — опубликованное видно");
+    eq(text.includes("owner"), true, "entries.read: посетителю — свои карточки видны");
+    eq(text.includes("draft"), false, "entries.read: черновики посетителю не видны");
+  }
 }
 
 if (failed > 0) {
