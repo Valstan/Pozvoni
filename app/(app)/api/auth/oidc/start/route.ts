@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { authorizeUrl, oidcConfig, pkceChallenge, randomToken } from "@/lib/oidc";
 import { esaLinkAllowed } from "@/lib/esa-link-rule";
-import { FLOW_COOKIE, flowCookieOptions, safeNext, type FlowState } from "@/lib/oidc-flow";
+import { FLOW_COOKIE, flowCookieOptions, type FlowState } from "@/lib/oidc-flow";
+import { safeNext } from "@/lib/safe-next";
 
 // Начало входа через ЕСА.
 //
